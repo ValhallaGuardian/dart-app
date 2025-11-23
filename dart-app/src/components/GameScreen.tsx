@@ -18,8 +18,8 @@ const initialState: GameState = {
   round: 1,
   currentThrow: null,
   players: [
-    { name: "Marek", score: 501, isActive: true },
-    { name: "Tomek", score: 501, isActive: false },
+    { name: "Franek", score: 501, isActive: true },
+    { name: "Marcin", score: 501, isActive: false },
   ]
 };
 
