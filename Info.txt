@@ -1,0 +1,7 @@
+To narzędzia, których użyjesz do zbudowania aplikacji:
+
+Framework: React (zbudowany przez Vite) – standard rynkowy, szybki i modułowy.
+Język: TypeScript – dla bezpieczeństwa kodu i łatwiejszej pracy z danymi.
+Komunikacja: Socket.io Client – do obsługi WebSockets (real-time).
+Wygląd (CSS): Tailwind CSS – do szybkiego stylowania pod urządzenia mobilne.
+Format Aplikacji: PWA (Progressive Web App) – możliwość instalacji na telefonie, tryb pełnoekranowy, brak paska adresu.
