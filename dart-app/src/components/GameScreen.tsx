@@ -1,63 +1,33 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { socket } from '../services/socket';
+import type { GameState } from '../types';
 
-// Interfejsy bez zmian (Twój kontrakt)
-interface Player {
-  name: string;
-  score: number;
-  isActive: boolean;
-}
-
-interface GameState {
-  players: Player[];
-  currentThrow: number | null;
-  round: number;
-}
-
-// Stan początkowy (zamiast const mockData)
 const initialState: GameState = {
   round: 1,
   currentThrow: null,
   players: [
-    { name: "Franek", score: 501, isActive: true },
-    { name: "Marcin", score: 501, isActive: false },
+    { name: "Oczekiwanie...", score: 501, isActive: false },
+    { name: "Oczekiwanie...", score: 501, isActive: false },
   ]
 };
 
 const GameScreen = () => {
-  // Używamy useState - teraz React będzie śledził zmiany!
   const [gameState, setGameState] = useState<GameState>(initialState);
 
-  // Funkcja symulująca rzut (do testów przyciskiem)
-  const simulateThrow = () => {
-    // Losujemy punkty od 0 do 60
-    const points = Math.floor(Math.random() * 61);
-    
-    setGameState(prev => {
-      // Kopia graczy (w React nie mutujemy stanu bezpośrednio)
-      const newPlayers = prev.players.map(player => {
-        if (player.isActive) {
-          return { ...player, score: Math.max(0, player.score - points) };
-        }
-        return player;
-      });
+  useEffect(() => {
+    socket.connect();
 
-      return {
-        ...prev,
-        currentThrow: points,
-        players: newPlayers
-      };
-    });
-  };
+    const onGameUpdate = (newState: GameState) => {
+      setGameState(newState);
+    };
 
-  // Funkcja zmiany tury
-  const nextTurn = () => {
-    setGameState(prev => ({
-      ...prev,
-      round: prev.players[1].isActive ? prev.round + 1 : prev.round, // Zwiększ rundę jak drugi gracz skończy
-      currentThrow: null, // Reset wyświetlacza rzutu
-      players: prev.players.map(p => ({ ...p, isActive: !p.isActive })) // Odwróć aktywność
-    }));
-  };
+    socket.on('game_update', onGameUpdate);
+
+    return () => {
+      socket.off('game_update', onGameUpdate);
+      socket.disconnect();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-4 flex flex-col items-center">
@@ -100,21 +70,9 @@ const GameScreen = () => {
         ))}
       </div>
 
-      {/* Przyciski akcji */}
-      <div className="mt-auto w-full max-w-md grid grid-cols-2 gap-4 py-6">
-        {/* Ten przycisk to Twój "symulator tarczy" na czas developmentu */}
-        <button 
-          onClick={simulateThrow}
-          className="bg-slate-700 py-4 rounded-lg font-bold text-slate-300 active:bg-slate-600 active:scale-95 transition-transform"
-        >
-          Symuluj Rzut 🎯
-        </button>
-        <button 
-          onClick={nextTurn}
-          className="bg-green-600 py-4 rounded-lg font-bold text-white active:bg-green-700 active:scale-95 transition-transform"
-        >
-          Następny Gracz
-        </button>
+      {/* Przyciski akcji - USUNIĘTE (Sterowanie przez serwer) */}
+      <div className="mt-auto w-full max-w-md text-center py-6 text-slate-500 text-sm">
+        Oczekiwanie na rzuty z tarczy...
       </div>
 
     </div>

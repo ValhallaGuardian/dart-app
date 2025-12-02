@@ -1,0 +1,12 @@
+{
+  "name": "dart-backend-emulator",
+  "version": "1.0.0",
+  "description": "Simple emulator for Dartboard backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1"
+  }
+}
