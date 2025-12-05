@@ -1,7 +1,7 @@
-To narzędzia, których użyjesz do zbudowania aplikacji:
-
-Framework: React (zbudowany przez Vite) – standard rynkowy, szybki i modułowy.
-Język: TypeScript – dla bezpieczeństwa kodu i łatwiejszej pracy z danymi.
-Komunikacja: Socket.io Client – do obsługi WebSockets (real-time).
-Wygląd (CSS): Tailwind CSS – do szybkiego stylowania pod urządzenia mobilne.
-Format Aplikacji: PWA (Progressive Web App) – możliwość instalacji na telefonie, tryb pełnoekranowy, brak paska adresu.
+Framework: React 19 – najnowszy standard rynkowy, gwarantujący wydajność i modułowość.
+Język: TypeScript – silne typowanie danych. Zapobiega błędom typu "undefined" i gwarantuje, że dane wyświetlane graczowi są poprawne.
+Build Tool: Vite – błyskawiczne ładowanie aplikacji.
+Styling: Tailwind CSS (v3.4) – podejście "Mobile First". Aplikacja jest responsywna (RWD) i zoptymalizowana pod ekrany dotykowe (duże przyciski, ciemny motyw oszczędzający baterię/oczy).
+Komunikacja: Socket.io Client – obsługa połączenia w czasie rzeczywistym (Real-time).
+Architektura: PWA (Progressive Web App) – aplikację można zainstalować na telefonie, działa pełnoekranowo (bez paska adresu przeglądarki) i zachowuje się jak natywna aplikacja.
+Routing: React Router – obsługa nawigacji (Logowanie -> Lobby -> Gra -> Profil).

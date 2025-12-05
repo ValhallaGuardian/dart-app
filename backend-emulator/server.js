@@ -2,7 +2,7 @@ const { Server } = require("socket.io");
 
 const io = new Server(3000, {
   cors: {
-    origin: "*", // Pozwalamy na połączenia z każdego źródła (dla dev)
+    origin: "*", 
   },
 });
 
@@ -13,18 +13,20 @@ let gameState = {
   round: 1,
   currentThrow: null,
   players: [
-    { name: "Emulator Adam", score: 501, isActive: true },
-    { name: "Emulator Bot", score: 501, isActive: false },
+    { name: "Bot Marcin", score: 501, isActive: true },
+    { name: "Bot Franek", score: 501, isActive: false },
+    { name: "Bot Dariusz", score: 501, isActive: false },
+    { name: "Bot R", score: 501, isActive: false },
   ],
 };
 
-// Logika gry (uproszczona)
+// Logika gry
 function simulateGameStep() {
-  // Znajdź aktywnego gracza
+  
   const activePlayerIndex = gameState.players.findIndex((p) => p.isActive);
   const activePlayer = gameState.players[activePlayerIndex];
 
-  // Symuluj rzut (0-60 punktów)
+  // Symulacja rzutu
   const points = Math.floor(Math.random() * 61);
   
   console.log(`Rzut: ${activePlayer.name} trafia ${points}!`);
@@ -47,7 +49,7 @@ function simulateGameStep() {
     gameState.players.forEach(p => p.score = 501);
     gameState.round = 1;
   } else {
-    // Zmiana tury (co rzut dla dynamiki testów, normalnie co 3 rzuty)
+    // Zmiana tury
     gameState.players[activePlayerIndex].isActive = false;
     const nextPlayerIndex = (activePlayerIndex + 1) % gameState.players.length;
     gameState.players[nextPlayerIndex].isActive = true;
@@ -63,13 +65,13 @@ function simulateGameStep() {
 }
 
 io.on("connection", (socket) => {
-  console.log(`🔌 Klient połączony: ${socket.id}`);
+  console.log(`Klient połączony: ${socket.id}`);
   
   // Wyślij stan natychmiast po połączeniu
   socket.emit("game_update", gameState);
 
   socket.on("disconnect", () => {
-    console.log(`❌ Klient rozłączony: ${socket.id}`);
+    console.log(`Klient rozłączony: ${socket.id}`);
   });
 });
 
