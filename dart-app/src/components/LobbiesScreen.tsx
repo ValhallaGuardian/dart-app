@@ -1,19 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { lobbyApi } from '../services/api';
+import { lobbyApi, gameApi } from '../services/api';
 import type { LobbyListItem } from '../types';
 
 const LobbiesScreen = () => {
   const [lobbies, setLobbies] = useState<LobbyListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const fetchLobbies = async () => {
     try {
       setIsLoading(true);
-      const data = await lobbyApi.getAll();
+      const [data, canStartData] = await Promise.all([
+        lobbyApi.getAll(),
+        gameApi.canStart()
+      ]);
       setLobbies(data);
+      setActiveGameId(canStartData.activeGameId);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Błąd pobierania lobby');
@@ -39,12 +44,21 @@ const LobbiesScreen = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, lobbyId: string) => {
+    const isOnBoard = activeGameId === lobbyId;
+    
     switch (status) {
       case 'WAITING':
         return <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full">Oczekuje</span>;
       case 'PLAYING':
-        return <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-full">W grze</span>;
+        return (
+          <div className="flex items-center gap-1">
+            <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-full">W grze</span>
+            {isOnBoard && (
+              <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-full animate-pulse">🎯 Na tarczy</span>
+            )}
+          </div>
+        );
       case 'FINISHED':
         return <span className="px-2 py-1 bg-slate-500/20 text-slate-400 text-xs rounded-full">Zakończona</span>;
       default:
@@ -104,6 +118,13 @@ const LobbiesScreen = () => {
 
         {/* Lista lobby */}
         <div className="space-y-3">
+          {/* Info o zajętej tarczy */}
+          {activeGameId && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm text-center mb-4">
+              🎯 Tarcza jest obecnie zajęta przez inną grę
+            </div>
+          )}
+          
           {lobbies.map((lobby) => (
             <div
               key={lobby.id}
@@ -114,7 +135,7 @@ const LobbiesScreen = () => {
                   <h3 className="font-bold text-lg">{lobby.name}</h3>
                   <p className="text-slate-400 text-sm">Host: {lobby.hostName}</p>
                 </div>
-                {getStatusBadge(lobby.status)}
+                {getStatusBadge(lobby.status, lobby.id)}
               </div>
               
               <div className="flex justify-between items-center mt-3">

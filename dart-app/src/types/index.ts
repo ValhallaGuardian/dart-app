@@ -169,6 +169,9 @@ export interface ServerToClientEvents {
   lobby_update: (lobby: Lobby) => void;
   game_started: (state: GameState) => void;
   game_ended: () => void;
+  game_aborted: (data: { abortedBy: string }) => void;
+  host_changed: (data: { newHostId: string; newHostName: string }) => void;
+  lobby_deleted: () => void;
   error: (message: string) => void;
 }
 

@@ -167,9 +167,19 @@ export const lobbyApi = {
     return handleResponse<GameState>(response);
   },
 
-  // Zakończ grę (tylko host)
+  // Zakończ grę (tylko host, po zakończeniu normalnym)
   async endGame(id: string): Promise<{ message: string }> {
     const response = await fetch(`${API_BASE}/lobbies/${id}/end`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    
+    return handleResponse<{ message: string }>(response);
+  },
+
+  // Przerwij grę (każdy gracz może, kończy grę dla wszystkich)
+  async abortGame(id: string): Promise<{ message: string }> {
+    const response = await fetch(`${API_BASE}/lobbies/${id}/abort`, {
       method: 'POST',
       headers: authHeaders(),
     });

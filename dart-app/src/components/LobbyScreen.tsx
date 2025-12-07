@@ -21,6 +21,7 @@ const LobbyScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [isStarting, setIsStarting] = useState(false);
+  const [hostChangeMessage, setHostChangeMessage] = useState<string | null>(null);
 
   const isHost = lobby?.hostId === user?.id;
 
@@ -34,7 +35,12 @@ const LobbyScreen = () => {
         setLobby(data);
         setError('');
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Nie można załadować lobby');
+        const message = err instanceof Error ? err.message : 'Nie można załadować lobby';
+        if (message.includes('nie istnieje')) {
+          setError('To lobby już nie istnieje');
+        } else {
+          setError(message);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -55,13 +61,27 @@ const LobbyScreen = () => {
       navigate(`/game/${lobbyId}`);
     };
 
+    const onHostChanged = ({ newHostName }: { newHostId: string; newHostName: string }) => {
+      setHostChangeMessage(`${newHostName} jest teraz hostem`);
+      setTimeout(() => setHostChangeMessage(null), 3000);
+    };
+
+    const onLobbyDeleted = () => {
+      setError('Lobby zostało usunięte');
+      setTimeout(() => navigate('/lobbies'), 2000);
+    };
+
     socket.on('lobby_update', onLobbyUpdate);
     socket.on('game_started', onGameStarted);
+    socket.on('host_changed', onHostChanged);
+    socket.on('lobby_deleted', onLobbyDeleted);
 
     return () => {
       socket.emit('leave_lobby', lobbyId);
       socket.off('lobby_update', onLobbyUpdate);
       socket.off('game_started', onGameStarted);
+      socket.off('host_changed', onHostChanged);
+      socket.off('lobby_deleted', onLobbyDeleted);
     };
   }, [lobbyId, token, navigate]);
 
@@ -125,7 +145,10 @@ const LobbyScreen = () => {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
         <div className="text-5xl mb-4">😕</div>
-        <p className="text-xl mb-4">Lobby nie istnieje</p>
+        <p className="text-xl mb-2 text-center">{error || 'Lobby nie istnieje'}</p>
+        <p className="text-slate-400 text-sm mb-6 text-center">
+          Lobby mogło zostać usunięte lub link jest nieprawidłowy
+        </p>
         <button
           onClick={() => navigate('/lobbies')}
           className="px-6 py-3 bg-green-500 text-white rounded-xl font-bold active:scale-95"
@@ -138,6 +161,13 @@ const LobbyScreen = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
+      
+      {/* Toast powiadomienie o zmianie hosta */}
+      {hostChangeMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-yellow-500/90 text-black rounded-full font-medium text-sm animate-pulse">
+          👑 {hostChangeMessage}
+        </div>
+      )}
       
       {/* Header */}
       <header className="p-4 flex justify-between items-center border-b border-slate-800">

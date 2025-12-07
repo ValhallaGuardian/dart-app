@@ -46,6 +46,24 @@ function loadDatabase() {
       const data = fs.readFileSync(DB_PATH, "utf-8");
       db = JSON.parse(data);
       console.log(`📁 Załadowano bazę: ${db.users.length} użytkowników, ${db.lobbies.length} lobby`);
+      
+      // Walidacja: sprawdź czy activeGame wskazuje na istniejące lobby
+      if (db.activeGame) {
+        const activeLobby = db.lobbies.find((l) => l.id === db.activeGame);
+        if (!activeLobby || activeLobby.status !== "PLAYING") {
+          console.log(`⚠️ Czyszczenie nieprawidłowego activeGame: ${db.activeGame}`);
+          db.activeGame = null;
+          saveDatabase();
+        }
+      }
+      
+      // Usuń puste/nieaktualne lobbies
+      const beforeCount = db.lobbies.length;
+      db.lobbies = db.lobbies.filter((l) => l.status !== "FINISHED" && l.players.length > 0);
+      if (db.lobbies.length !== beforeCount) {
+        console.log(`🧹 Usunięto ${beforeCount - db.lobbies.length} starych lobby`);
+        saveDatabase();
+      }
     }
   } catch (err) {
     console.log("📁 Tworzę nową bazę danych...");
@@ -245,18 +263,20 @@ app.get("/api/profile/avatars", (req, res) => {
 // REST API - LOBBY
 // ============================================
 
-// Lista wszystkich lobby
+// Lista wszystkich lobby (bez FINISHED)
 app.get("/api/lobbies", authMiddleware, (req, res) => {
-  const lobbies = db.lobbies.map((lobby) => ({
-    id: lobby.id,
-    name: lobby.name,
-    hostName: lobby.hostName,
-    playerCount: lobby.players.length,
-    maxPlayers: lobby.maxPlayers,
-    mode: lobby.mode,
-    status: lobby.status,
-    createdAt: lobby.createdAt,
-  }));
+  const lobbies = db.lobbies
+    .filter((lobby) => lobby.status !== "FINISHED") // Nie pokazuj zakończonych
+    .map((lobby) => ({
+      id: lobby.id,
+      name: lobby.name,
+      hostName: lobby.hostName,
+      playerCount: lobby.players.length,
+      maxPlayers: lobby.maxPlayers,
+      mode: lobby.mode,
+      status: lobby.status,
+      createdAt: lobby.createdAt,
+    }));
 
   res.json(lobbies);
 });
@@ -374,21 +394,30 @@ app.post("/api/lobbies/:id/leave", authMiddleware, (req, res) => {
       lobby.players[0].isHost = true;
       lobby.hostId = lobby.players[0].id;
       lobby.hostName = lobby.players[0].username;
+      
+      saveDatabase();
+      console.log(`👑 Nowy host: ${lobby.hostName} w lobby: ${lobby.name}`);
+      
+      // Powiadom o zmianie hosta i aktualizacji lobby
+      io.to(lobby.id).emit("host_changed", { newHostId: lobby.hostId, newHostName: lobby.hostName });
+      io.to(lobby.id).emit("lobby_update", lobby);
     } else {
       // Usuń puste lobby
       db.lobbies = db.lobbies.filter((l) => l.id !== lobby.id);
       saveDatabase();
       console.log(`🗑️ Usunięto puste lobby: ${lobby.name}`);
+      
+      // Powiadom o usunięciu lobby
+      io.to(lobby.id).emit("lobby_deleted");
       return res.json({ message: "Lobby usunięte" });
     }
+  } else {
+    saveDatabase();
+    // Powiadom innych
+    io.to(lobby.id).emit("lobby_update", lobby);
   }
 
-  saveDatabase();
-
   console.log(`👋 ${leavingPlayer.username} opuścił: ${lobby.name}`);
-
-  // Powiadom innych
-  io.to(lobby.id).emit("lobby_update", lobby);
 
   res.json({ message: "Opuszczono lobby" });
 });
@@ -506,7 +535,7 @@ app.post("/api/lobbies/:id/start", authMiddleware, (req, res) => {
   res.json(lobby.gameState);
 });
 
-// Zakończ grę
+// Zakończ grę (tylko host, po zakończeniu normalnym)
 app.post("/api/lobbies/:id/end", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -533,6 +562,45 @@ app.post("/api/lobbies/:id/end", authMiddleware, (req, res) => {
   io.to(lobby.id).emit("game_ended");
 
   res.json({ message: "Gra zakończona" });
+});
+
+// Przerwij grę (każdy gracz może przerwać - kończy grę dla wszystkich)
+app.post("/api/lobbies/:id/abort", authMiddleware, (req, res) => {
+  const lobby = db.lobbies.find((l) => l.id === req.params.id);
+
+  if (!lobby) {
+    return res.status(404).json({ error: "Lobby nie istnieje" });
+  }
+
+  // Sprawdź czy użytkownik jest w tym lobby
+  const player = lobby.players.find((p) => p.id === req.user.id);
+  if (!player) {
+    return res.status(403).json({ error: "Nie jesteś w tym lobby" });
+  }
+
+  // Sprawdź czy gra trwa
+  if (lobby.status !== "PLAYING") {
+    return res.status(400).json({ error: "Gra nie jest w trakcie" });
+  }
+
+  const user = db.users.find((u) => u.id === req.user.id);
+  const abortedBy = user ? user.username : "Nieznany";
+
+  // Zwolnij tarczę
+  if (db.activeGame === lobby.id) {
+    db.activeGame = null;
+  }
+
+  // Usuń lobby po przerwaniu gry
+  db.lobbies = db.lobbies.filter((l) => l.id !== lobby.id);
+  saveDatabase();
+
+  console.log(`❌ Gra przerwana przez ${abortedBy}: ${lobby.name}`);
+
+  // Powiadom wszystkich graczy o przerwaniu
+  io.to(lobby.id).emit("game_aborted", { abortedBy });
+
+  res.json({ message: "Gra przerwana" });
 });
 
 // ============================================

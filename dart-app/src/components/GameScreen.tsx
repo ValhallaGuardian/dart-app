@@ -33,6 +33,9 @@ const GameScreen = () => {
   const { token } = useAuth();
   
   const [gameState, setGameState] = useState<GameState>(initialState);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [isAborting, setIsAborting] = useState(false);
+  const [abortMessage, setAbortMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!lobbyId || !token) return;
@@ -42,6 +45,9 @@ const GameScreen = () => {
       if (lobby.gameState) {
         setGameState(lobby.gameState);
       }
+    }).catch(() => {
+      // Lobby nie istnieje - przekieruj
+      navigate('/home');
     });
 
     // Połącz socket
@@ -56,21 +62,62 @@ const GameScreen = () => {
       navigate(`/lobby/${lobbyId}`);
     };
 
+    const onGameAborted = ({ abortedBy }: { abortedBy: string }) => {
+      setAbortMessage(`Gra została przerwana przez gracza ${abortedBy}`);
+      // Przekieruj do home po chwili
+      setTimeout(() => {
+        navigate('/home');
+      }, 3000);
+    };
+
     socket.on('game_update', onGameUpdate);
     socket.on('game_ended', onGameEnded);
+    socket.on('game_aborted', onGameAborted);
 
     return () => {
       socket.emit('leave_lobby', lobbyId);
       socket.off('game_update', onGameUpdate);
       socket.off('game_ended', onGameEnded);
+      socket.off('game_aborted', onGameAborted);
     };
   }, [lobbyId, token, navigate]);
 
-  const handleLeaveGame = () => {
-    navigate(`/lobby/${lobbyId}`);
+  const handleExitClick = () => {
+    if (gameState.status === 'PLAYING') {
+      setShowExitConfirm(true);
+    } else {
+      navigate('/home');
+    }
+  };
+
+  const handleConfirmAbort = async () => {
+    if (!lobbyId) return;
+    
+    setIsAborting(true);
+    try {
+      await lobbyApi.abortGame(lobbyId);
+      navigate('/home');
+    } catch {
+      setIsAborting(false);
+      setShowExitConfirm(false);
+    }
   };
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+
+  // Ekran komunikatu o przerwaniu gry
+  if (abortMessage) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
+        <div className="text-6xl mb-6">❌</div>
+        <h1 className="text-2xl font-bold text-red-400 mb-4 text-center">
+          {abortMessage}
+        </h1>
+        <p className="text-slate-400 mb-4">Przekierowanie do panelu...</p>
+        <div className="animate-spin h-6 w-6 border-2 border-green-400 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   // Ekran zakończenia gry
   if (gameState.status === 'FINISHED' && gameState.winner) {
@@ -104,11 +151,11 @@ const GameScreen = () => {
         </div>
 
         <button
-          onClick={handleLeaveGame}
+          onClick={() => navigate('/home')}
           className="px-8 py-4 bg-green-500 text-white rounded-xl text-lg font-bold
                      active:scale-95 transition-all"
         >
-          Wróć do lobby
+          Wróć do panelu
         </button>
       </div>
     );
@@ -117,10 +164,50 @@ const GameScreen = () => {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-4 flex flex-col items-center">
       
+      {/* Dialog potwierdzenia wyjścia */}
+      {showExitConfirm && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-2xl p-6 max-w-sm w-full space-y-4">
+            <div className="text-center">
+              <div className="text-5xl mb-4">⚠️</div>
+              <h2 className="text-xl font-bold text-white mb-2">Przerwać grę?</h2>
+              <p className="text-slate-400 text-sm">
+                Wyjście zakończy grę dla wszystkich graczy. Czy na pewno chcesz kontynuować?
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                disabled={isAborting}
+                className="flex-1 py-3 bg-slate-700 text-white rounded-xl font-medium
+                           active:scale-95 transition-all disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleConfirmAbort}
+                disabled={isAborting}
+                className="flex-1 py-3 bg-red-500 text-white rounded-xl font-medium
+                           active:scale-95 transition-all disabled:opacity-50"
+              >
+                {isAborting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                  </span>
+                ) : (
+                  'Zakończ grę'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Nagłówek */}
       <div className="w-full max-w-md flex justify-between items-center mb-6">
         <button
-          onClick={handleLeaveGame}
+          onClick={handleExitClick}
           className="text-slate-400 text-sm active:scale-95"
         >
           ← Wyjdź
