@@ -286,9 +286,9 @@ app.post("/api/lobbies", authMiddleware, (req, res) => {
   const { name, maxPlayers = 4 } = req.body;
   const user = db.users.find((u) => u.id === req.user.id);
 
-  // Sprawdź czy użytkownik nie jest już w innym lobby
+  // Sprawdź czy użytkownik nie jest już w innym AKTYWNYM lobby (ignoruj FINISHED)
   const existingLobby = db.lobbies.find((l) =>
-    l.players.some((p) => p.id === req.user.id)
+    l.status !== "FINISHED" && l.players.some((p) => p.id === req.user.id)
   );
   if (existingLobby) {
     return res.status(400).json({ error: "Już jesteś w innym lobby" });
@@ -345,9 +345,9 @@ app.post("/api/lobbies/:id/join", authMiddleware, (req, res) => {
     return res.json(lobby);
   }
 
-  // Sprawdź czy w innym lobby
+  // Sprawdź czy w innym AKTYWNYM lobby (ignoruj FINISHED)
   const existingLobby = db.lobbies.find((l) =>
-    l.players.some((p) => p.id === req.user.id)
+    l.status !== "FINISHED" && l.players.some((p) => p.id === req.user.id)
   );
   if (existingLobby) {
     return res.status(400).json({ error: "Już jesteś w innym lobby" });
