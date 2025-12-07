@@ -1,0 +1,36 @@
+{
+  "users": [
+    {
+      "id": "3460bc39-ee06-457b-8f65-dfbed7e260ea",
+      "username": "Adam",
+      "password": "$2b$10$y.7hqlU9hnlJyYIABQx2kuv1K4HaF68sO/Z2NrT8kh/BpOQQZ3FOi",
+      "avatar": "default",
+      "createdAt": "2025-12-07T20:25:19.829Z",
+      "stats": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "totalPoints": 0,
+        "highestCheckout": 0,
+        "averagePerRound": 0,
+        "favoriteMode": null
+      }
+    },
+    {
+      "id": "91f1f7e3-19d1-44ef-99f0-75ee03e4ef05",
+      "username": "Franek",
+      "password": "$2b$10$vaAyEUoJRtnQe6UQ9N6ssO1DZ8ystP8PEfwkDRIS4EEnDB06uOOD6",
+      "avatar": "default",
+      "createdAt": "2025-12-07T20:28:37.080Z",
+      "stats": {
+        "gamesPlayed": 0,
+        "gamesWon": 0,
+        "totalPoints": 0,
+        "highestCheckout": 0,
+        "averagePerRound": 0,
+        "favoriteMode": null
+      }
+    }
+  ],
+  "lobbies": [],
+  "activeGame": "c2305e09-6ba2-4406-bb1d-9f8751e410cb"
+}

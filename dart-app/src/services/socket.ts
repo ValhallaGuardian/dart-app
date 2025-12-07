@@ -1,8 +1,24 @@
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
+import type { ServerToClientEvents, ClientToServerEvents } from "../types";
 
-// Adres IP Raspberry Pi (na razie localhost do testów, potem zmienisz na np. "http://192.168.1.15:3000")
-const URL = "http://localhost:3000";
+// URL z .env lub fallback do localhost
+const URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-export const socket = io(URL, {
-  autoConnect: false // Nie łącz się od razu przy starcie, poczekaj na inicjalizację
+// Typowany socket
+export const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(URL, {
+  autoConnect: false,
+  auth: {
+    token: localStorage.getItem('token') || '',
+  },
 });
+
+// Funkcja do połączenia z tokenem
+export function connectSocket(token: string) {
+  socket.auth = { token };
+  socket.connect();
+}
+
+// Funkcja do rozłączenia
+export function disconnectSocket() {
+  socket.disconnect();
+}
