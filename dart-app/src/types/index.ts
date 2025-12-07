@@ -29,6 +29,16 @@ export interface DartThrow {
   total: number;        // value * multiplier (obliczone przez serwer)
 }
 
+// Historia rzutu (z informacją o graczu)
+export interface ThrowHistoryItem {
+  id: string;           // Unikalny ID rzutu
+  playerId: string;
+  playerName: string;
+  throw: DartThrow;
+  isBust: boolean;
+  timestamp: number;
+}
+
 // ============================================
 // STATYSTYKI GRACZA
 // ============================================
@@ -148,6 +158,9 @@ export interface GameState {
   
   // Checkout helper (obliczany przez serwer dla 301/501)
   checkoutHint?: string[];    // np. ["T20", "T20", "D20"] dla 120
+  
+  // Historia rzutów (ostatnie 10)
+  throwHistory?: ThrowHistoryItem[];
 }
 
 // ============================================

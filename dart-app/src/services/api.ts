@@ -186,6 +186,26 @@ export const lobbyApi = {
     
     return handleResponse<{ message: string }>(response);
   },
+
+  // Symuluj następny rzut (DEV)
+  async simulateThrow(id: string): Promise<GameState> {
+    const response = await fetch(`${API_BASE}/lobbies/${id}/simulate-throw`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    
+    return handleResponse<GameState>(response);
+  },
+
+  // Cofnij ostatni rzut (tylko host)
+  async undoThrow(id: string): Promise<GameState> {
+    const response = await fetch(`${API_BASE}/lobbies/${id}/undo-throw`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    
+    return handleResponse<GameState>(response);
+  },
 };
 
 // ============================================

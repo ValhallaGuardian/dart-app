@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { lobbyApi } from '../services/api';
 import { socket, connectSocket } from '../services/socket';
-import type { GameState, DartThrow } from '../types';
+import type { GameState, DartThrow, ThrowHistoryItem } from '../types';
 
 const initialState: GameState = {
   mode: '501',
@@ -14,7 +14,8 @@ const initialState: GameState = {
   isBust: false,
   isDoubleOut: true,
   winner: null,
-  players: []
+  players: [],
+  throwHistory: []
 };
 
 // Helper do formatowania rzutu
@@ -30,12 +31,16 @@ const formatThrow = (dart: DartThrow | null): string => {
 const GameScreen = () => {
   const { id: lobbyId } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   
   const [gameState, setGameState] = useState<GameState>(initialState);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isAborting, setIsAborting] = useState(false);
   const [abortMessage, setAbortMessage] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(true);
+  const [isHost, setIsHost] = useState(false);
+  const [isUndoing, setIsUndoing] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
 
   useEffect(() => {
     if (!lobbyId || !token) return;
@@ -45,6 +50,8 @@ const GameScreen = () => {
       if (lobby.gameState) {
         setGameState(lobby.gameState);
       }
+      // Sprawdź czy aktualny użytkownik jest hostem
+      setIsHost(lobby.hostId === user?.id);
     }).catch(() => {
       // Lobby nie istnieje - przekieruj
       navigate('/home');
@@ -80,7 +87,7 @@ const GameScreen = () => {
       socket.off('game_ended', onGameEnded);
       socket.off('game_aborted', onGameAborted);
     };
-  }, [lobbyId, token, navigate]);
+  }, [lobbyId, token, navigate, user?.id]);
 
   const handleExitClick = () => {
     if (gameState.status === 'PLAYING') {
@@ -103,7 +110,34 @@ const GameScreen = () => {
     }
   };
 
+  const handleSimulateThrow = async () => {
+    if (!lobbyId || isSimulating) return;
+    
+    setIsSimulating(true);
+    try {
+      await lobbyApi.simulateThrow(lobbyId);
+    } catch (err) {
+      console.error('Błąd symulacji:', err);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const handleUndoThrow = async () => {
+    if (!lobbyId || !isHost || isUndoing) return;
+    
+    setIsUndoing(true);
+    try {
+      await lobbyApi.undoThrow(lobbyId);
+    } catch (err) {
+      console.error('Błąd cofania:', err);
+    } finally {
+      setIsUndoing(false);
+    }
+  };
+
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+  const throwHistory = gameState.throwHistory || [];
 
   // Ekran komunikatu o przerwaniu gry
   if (abortMessage) {
@@ -268,7 +302,7 @@ const GameScreen = () => {
       )}
 
       {/* Lista Graczy */}
-      <div className="w-full max-w-md space-y-3 mb-8">
+      <div className="w-full max-w-md space-y-3 mb-4">
         {gameState.players.map((player) => (
           <div 
             key={player.id}
@@ -293,8 +327,45 @@ const GameScreen = () => {
         ))}
       </div>
 
+      {/* Przyciski kontrolne */}
+      <div className="w-full max-w-md flex gap-3 mb-4">
+        {/* Symuluj rzut (DEV) */}
+        <button
+          onClick={handleSimulateThrow}
+          disabled={isSimulating || gameState.status !== 'PLAYING'}
+          className="flex-1 py-3 bg-blue-500/20 text-blue-400 border border-blue-500/50 rounded-xl font-medium
+                     active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+        >
+          {isSimulating ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full" />
+            </span>
+          ) : (
+            '🎯 Następny rzut'
+          )}
+        </button>
+        
+        {/* Cofnij rzut (tylko host) */}
+        {isHost && (
+          <button
+            onClick={handleUndoThrow}
+            disabled={isUndoing || throwHistory.length === 0 || gameState.status !== 'PLAYING'}
+            className="flex-1 py-3 bg-orange-500/20 text-orange-400 border border-orange-500/50 rounded-xl font-medium
+                       active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+          >
+            {isUndoing ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="animate-spin h-4 w-4 border-2 border-orange-400 border-t-transparent rounded-full" />
+              </span>
+            ) : (
+              '↩️ Cofnij rzut'
+            )}
+          </button>
+        )}
+      </div>
+
       {/* Status gry */}
-      <div className="mt-auto w-full max-w-md text-center py-6">
+      <div className="w-full max-w-md text-center py-2">
         {gameState.status === 'FINISHED' && gameState.winner ? (
           <div className="text-2xl font-bold text-green-400">
             🏆 {gameState.players.find(p => p.id === gameState.winner)?.name} wygrywa!
@@ -305,6 +376,69 @@ const GameScreen = () => {
           </p>
         )}
       </div>
+
+      {/* Historia rzutów - slide-in z prawej */}
+      <button
+        onClick={() => setShowHistory(!showHistory)}
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-slate-800 border border-slate-700 
+                   rounded-l-xl px-2 py-4 text-slate-400 active:scale-95 transition-all"
+      >
+        {showHistory ? '›' : '‹'}
+      </button>
+      
+      <div 
+        className={`fixed right-0 top-0 h-full w-48 bg-slate-800/95 backdrop-blur-sm border-l border-slate-700 
+                    z-30 transition-transform duration-300 ease-out overflow-hidden
+                    ${showHistory ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        <div className="p-3 border-b border-slate-700">
+          <h3 className="text-sm font-bold text-slate-300">Historia rzutów</h3>
+        </div>
+        
+        <div className="p-2 space-y-1 overflow-y-auto h-[calc(100%-48px)]">
+          {throwHistory.length === 0 ? (
+            <p className="text-slate-500 text-xs text-center py-4">Brak rzutów</p>
+          ) : (
+            [...throwHistory].reverse().map((item, index) => (
+              <div 
+                key={item.id}
+                className={`p-2 rounded-lg text-xs transition-all duration-300
+                  ${index === 0 ? 'bg-green-500/20 border border-green-500/30 animate-pulse' : 'bg-slate-700/50'}
+                  ${item.isBust ? 'border-l-2 border-l-red-500' : ''}`}
+                style={{
+                  animation: index === 0 ? 'slideIn 0.3s ease-out' : 'none'
+                }}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 truncate max-w-[60px]">{item.playerName}</span>
+                  <span className={`font-mono font-bold ${item.isBust ? 'text-red-400' : 'text-green-400'}`}>
+                    {item.isBust ? 'BUST' : formatThrow(item.throw)}
+                  </span>
+                </div>
+                {!item.isBust && (
+                  <div className="text-slate-500 text-right">
+                    {item.throw.total} pkt
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* CSS dla animacji */}
+      <style>{`
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateX(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
 
     </div>
   );

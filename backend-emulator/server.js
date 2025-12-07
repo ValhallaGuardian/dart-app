@@ -512,6 +512,7 @@ app.post("/api/lobbies/:id/start", authMiddleware, (req, res) => {
     isDoubleOut: true,
     winner: null,
     checkoutHint: null,
+    throwHistory: [], // Historia rzutów
     players: lobby.players.map((p) => ({
       id: p.id,
       name: p.username,
@@ -603,6 +604,107 @@ app.post("/api/lobbies/:id/abort", authMiddleware, (req, res) => {
   res.json({ message: "Gra przerwana" });
 });
 
+// Symuluj następny rzut (DEV - przycisk ręcznej symulacji)
+app.post("/api/lobbies/:id/simulate-throw", authMiddleware, (req, res) => {
+  const lobby = db.lobbies.find((l) => l.id === req.params.id);
+
+  if (!lobby) {
+    return res.status(404).json({ error: "Lobby nie istnieje" });
+  }
+
+  if (!lobby.gameState || lobby.gameState.status !== "PLAYING") {
+    return res.status(400).json({ error: "Gra nie jest w trakcie" });
+  }
+
+  // Wykonaj symulację rzutu
+  processThrow(lobby);
+
+  res.json(lobby.gameState);
+});
+
+// Cofnij ostatni rzut (tylko host)
+app.post("/api/lobbies/:id/undo-throw", authMiddleware, (req, res) => {
+  const lobby = db.lobbies.find((l) => l.id === req.params.id);
+
+  if (!lobby) {
+    return res.status(404).json({ error: "Lobby nie istnieje" });
+  }
+
+  if (lobby.hostId !== req.user.id) {
+    return res.status(403).json({ error: "Tylko host może cofać rzuty" });
+  }
+
+  if (!lobby.gameState || lobby.gameState.status !== "PLAYING") {
+    return res.status(400).json({ error: "Gra nie jest w trakcie" });
+  }
+
+  const gs = lobby.gameState;
+  
+  // Sprawdź czy jest co cofać
+  if (!gs.throwHistory || gs.throwHistory.length === 0) {
+    return res.status(400).json({ error: "Brak rzutów do cofnięcia" });
+  }
+
+  // Pobierz ostatni rzut z historii
+  const lastHistoryItem = gs.throwHistory.pop();
+  
+  // Znajdź gracza który wykonał ten rzut
+  const player = gs.players.find(p => p.id === lastHistoryItem.playerId);
+  if (!player) {
+    return res.status(400).json({ error: "Nie można znaleźć gracza" });
+  }
+
+  // Przywróć punkty
+  if (!lastHistoryItem.isBust) {
+    player.score += lastHistoryItem.throw.total;
+  }
+
+  // Usuń rzut z throwsInRound jeśli to ten sam gracz który teraz rzuca
+  const currentPlayer = gs.players[gs.currentPlayerIndex];
+  
+  if (currentPlayer.id === player.id) {
+    // Ten sam gracz - usuń z jego rzutów w rundzie
+    if (currentPlayer.throwsInRound.length > 0) {
+      currentPlayer.throwsInRound.pop();
+    }
+  } else {
+    // Inny gracz - musimy wrócić do poprzedniego gracza
+    gs.players[gs.currentPlayerIndex].isActive = false;
+    
+    // Znajdź indeks gracza który rzucał
+    const playerIndex = gs.players.findIndex(p => p.id === player.id);
+    gs.currentPlayerIndex = playerIndex;
+    gs.players[playerIndex].isActive = true;
+    
+    // Przywróć jego rzuty w rundzie (jeśli miał 3, teraz ma 2)
+    // Rzuty są już w throwsInRound, więc usuwamy ostatni
+    if (player.throwsInRound.length > 0) {
+      player.throwsInRound.pop();
+    }
+  }
+
+  // Zaktualizuj lastThrow na poprzedni z historii
+  if (gs.throwHistory.length > 0) {
+    const prevItem = gs.throwHistory[gs.throwHistory.length - 1];
+    gs.lastThrow = prevItem.throw;
+    gs.isBust = prevItem.isBust;
+  } else {
+    gs.lastThrow = null;
+    gs.isBust = false;
+  }
+
+  // Zaktualizuj checkout hint
+  gs.checkoutHint = getCheckoutHint(gs.players[gs.currentPlayerIndex].score);
+
+  saveDatabase();
+
+  console.log(`↩️ Cofnięto rzut: ${lastHistoryItem.playerName} - ${lastHistoryItem.throw.total}pkt`);
+
+  io.to(lobby.id).emit("game_update", gs);
+
+  res.json(gs);
+});
+
 // ============================================
 // SOCKET.IO - REAL-TIME
 // ============================================
@@ -691,13 +793,11 @@ function getCheckoutHint(score) {
   return checkoutTable[score] || null;
 }
 
-function simulateGameStep() {
-  if (!db.activeGame) return;
-
-  const lobby = db.lobbies.find((l) => l.id === db.activeGame);
-  if (!lobby || !lobby.gameState || lobby.gameState.status !== "PLAYING") return;
-
+// Przetwórz rzut (wspólna logika dla symulacji i ręcznego wyzwalania)
+function processThrow(lobby) {
   const gs = lobby.gameState;
+  if (!gs || gs.status !== "PLAYING") return;
+
   const activePlayer = gs.players[gs.currentPlayerIndex];
 
   // Symulacja rzutu
@@ -711,11 +811,13 @@ function simulateGameStep() {
   gs.isBust = false;
 
   let newScore = activePlayer.score - dartThrow.total;
+  let isBust = false;
 
   // Bust
   if (newScore < 0 || newScore === 1) {
     console.log(`💥 BUST!`);
     gs.isBust = true;
+    isBust = true;
     newScore = activePlayer.score;
     activePlayer.throwsInRound = [];
   } else {
@@ -728,9 +830,13 @@ function simulateGameStep() {
     if (gs.isDoubleOut && dartThrow.multiplier !== 2) {
       console.log(`💥 BUST! Wymagany Double Out!`);
       gs.isBust = true;
+      isBust = true;
       activePlayer.score = activePlayer.score + dartThrow.total;
       activePlayer.throwsInRound = [];
     } else {
+      // Dodaj do historii przed zakończeniem
+      addToHistory(gs, activePlayer, dartThrow, false);
+      
       console.log(`🏆 ${activePlayer.name} WYGRYWA!`);
       gs.winner = activePlayer.id;
       gs.status = "FINISHED";
@@ -744,6 +850,9 @@ function simulateGameStep() {
       return;
     }
   }
+
+  // Dodaj do historii rzutów
+  addToHistory(gs, activePlayer, dartThrow, isBust);
 
   gs.checkoutHint = getCheckoutHint(activePlayer.score);
 
@@ -765,8 +874,38 @@ function simulateGameStep() {
   io.to(lobby.id).emit("game_update", gs);
 }
 
-// Symuluj rzuty co 2 sekundy gdy gra jest aktywna
-setInterval(simulateGameStep, 2000);
+// Dodaj rzut do historii (max 10 elementów)
+function addToHistory(gs, player, dartThrow, isBust) {
+  if (!gs.throwHistory) {
+    gs.throwHistory = [];
+  }
+
+  gs.throwHistory.push({
+    id: uuidv4(),
+    playerId: player.id,
+    playerName: player.name,
+    throw: dartThrow,
+    isBust: isBust,
+    timestamp: Date.now(),
+  });
+
+  // Ogranicz do 10 ostatnich
+  if (gs.throwHistory.length > 10) {
+    gs.throwHistory = gs.throwHistory.slice(-10);
+  }
+}
+
+function simulateGameStep() {
+  if (!db.activeGame) return;
+
+  const lobby = db.lobbies.find((l) => l.id === db.activeGame);
+  if (!lobby || !lobby.gameState || lobby.gameState.status !== "PLAYING") return;
+
+  processThrow(lobby);
+}
+
+// Automatyczna symulacja WYŁĄCZONA - rzuty tylko przez przycisk lub tarczę
+// setInterval(simulateGameStep, 2000);
 
 // ============================================
 // START SERWERA
