@@ -2,9 +2,6 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import type { User } from '../types';
 import { authApi } from '../services/api';
 
-// ============================================
-// TYPY
-// ============================================
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -16,14 +13,8 @@ interface AuthContextType {
   updateUser: (user: User) => void;
 }
 
-// ============================================
-// CONTEXT
-// ============================================
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ============================================
-// PROVIDER
-// ============================================
 interface AuthProviderProps {
   children: ReactNode;
 }
@@ -106,9 +97,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
 }
 
-// ============================================
-// HOOK
-// ============================================
 export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   

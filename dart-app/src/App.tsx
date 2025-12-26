@@ -3,12 +3,13 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginScreen from './components/LoginScreen';
 import RegisterScreen from './components/RegisterScreen';
 import HomeScreen from './components/HomeScreen';
+import ProfileScreen from './components/ProfileScreen';
 import LobbiesScreen from './components/LobbiesScreen';
 import CreateLobbyScreen from './components/CreateLobbyScreen';
 import LobbyScreen from './components/LobbyScreen';
 import GameScreen from './components/GameScreen';
 
-// Komponent chroniący prywatne ścieżki
+/** Protected route wrapper - redirects unauthenticated users to login */
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -26,7 +27,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/" replace />;
 }
 
-// Komponent przekierowujący zalogowanych
+/** Public route wrapper - redirects authenticated users to home */
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -47,18 +48,16 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      {/* Publiczne (niezalogowani) */}
       <Route path="/" element={<PublicRoute><LoginScreen /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><RegisterScreen /></PublicRoute>} />
       
-      {/* Prywatne (zalogowani) */}
       <Route path="/home" element={<PrivateRoute><HomeScreen /></PrivateRoute>} />
+      <Route path="/profile" element={<PrivateRoute><ProfileScreen /></PrivateRoute>} />
       <Route path="/lobbies" element={<PrivateRoute><LobbiesScreen /></PrivateRoute>} />
       <Route path="/lobbies/create" element={<PrivateRoute><CreateLobbyScreen /></PrivateRoute>} />
       <Route path="/lobby/:id" element={<PrivateRoute><LobbyScreen /></PrivateRoute>} />
       <Route path="/game/:id" element={<PrivateRoute><GameScreen /></PrivateRoute>} />
       
-      {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -7,96 +7,87 @@ const bcrypt = require("bcryptjs");
 const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
 const path = require("path");
-
-// Serial port dla Arduino
 const { SerialPort } = require("serialport");
 const { ReadlineParser } = require("@serialport/parser-readline");
 
-// ============================================
-// KONFIGURACJA
-// ============================================
+// ===========================================
+// CONFIGURATION
+// ===========================================
 const PORT = 3000;
 const JWT_SECRET = "smart-dartboard-secret-key-2024";
 const DB_PATH = path.join(__dirname, "database.json");
+const FRONTEND_DIST = path.join(__dirname, "public");
+const SERIAL_PORT_PATH = "/dev/ttyACM0";
+const SERIAL_BAUD_RATE = 115200;
 
-// Konfiguracja Arduino
-const SERIAL_PORT_PATH = "/dev/ttyACM0"; // Port USB Arduino Mega
-const SERIAL_BAUD_RATE = 115200; // WAŻNE: Arduino wymaga 115200!
-
-// ============================================
-// INICJALIZACJA SERWERA
-// ============================================
+// ===========================================
+// SERVER INITIALIZATION
+// ===========================================
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static(FRONTEND_DIST));
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
-console.log("🎯 Smart Dartboard Backend Emulator");
+console.log("Smart Dartboard Backend");
 console.log("====================================");
 
-// ============================================
-// PROSTA BAZA DANYCH (JSON FILE)
-// ============================================
+// ===========================================
+// DATABASE
+// ===========================================
 let db = {
   users: [],
   lobbies: [],
-  activeGame: null, // ID aktywnej gry (tylko jedna może być aktywna)
+  activeGame: null,
 };
 
-// Załaduj bazę z pliku
 function loadDatabase() {
   try {
     if (fs.existsSync(DB_PATH)) {
       const data = fs.readFileSync(DB_PATH, "utf-8");
       db = JSON.parse(data);
-      console.log(`📁 Załadowano bazę: ${db.users.length} użytkowników, ${db.lobbies.length} lobby`);
+      console.log(`[DB] Zaladowano baze: ${db.users.length} uzytkownikow, ${db.lobbies.length} lobby`);
       
-      // Walidacja: sprawdź czy activeGame wskazuje na istniejące lobby
       if (db.activeGame) {
-        const activeLobby = db.lobbies.find((l) => l.id === db.activeGame);
-        if (!activeLobby || activeLobby.status !== "PLAYING") {
-          console.log(`⚠️ Czyszczenie nieprawidłowego activeGame: ${db.activeGame}`);
-          db.activeGame = null;
-          saveDatabase();
-        }
+        console.log(`[DB] Resetowanie aktywnej gry: ${db.activeGame}`);
+        db.activeGame = null;
       }
       
-      // Usuń puste/nieaktualne lobbies
-      const beforeCount = db.lobbies.length;
-      db.lobbies = db.lobbies.filter((l) => l.status !== "FINISHED" && l.players.length > 0);
-      if (db.lobbies.length !== beforeCount) {
-        console.log(`🧹 Usunięto ${beforeCount - db.lobbies.length} starych lobby`);
-        saveDatabase();
+      if (db.lobbies.length > 0) {
+        console.log(`[DB] Usuwanie ${db.lobbies.length} lobby (restart serwera)`);
+        db.lobbies = [];
       }
+      
+      saveDatabase();
+      console.log("[DB] Serwer uruchomiony z czysta karta");
     }
   } catch (err) {
-    console.log("📁 Tworzę nową bazę danych...");
+    console.log("[DB] Tworze nowa baze danych...");
   }
 }
 
-// Zapisz bazę do pliku
 function saveDatabase() {
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
 }
 
 loadDatabase();
 
-// ============================================
-// AVATAR PRESETS
-// ============================================
+// ===========================================
+// CONSTANTS
+// ===========================================
 const AVATAR_PRESETS = [
   "default", "dart1", "dart2", "dart3", 
   "player1", "player2", "player3", "player4",
   "crown", "target", "bull"
 ];
 
-// ============================================
-// HELPERY AUTH
-// ============================================
+// ===========================================
+// AUTHENTICATION HELPERS
+// ===========================================
 function generateToken(user) {
   return jwt.sign(
     { id: user.id, username: user.username },
@@ -113,7 +104,6 @@ function verifyToken(token) {
   }
 }
 
-// Middleware do weryfikacji tokenu
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -124,38 +114,32 @@ function authMiddleware(req, res, next) {
   const decoded = verifyToken(token);
 
   if (!decoded) {
-    return res.status(401).json({ error: "Nieprawidłowy token" });
+    return res.status(401).json({ error: "Nieprawidlowy token" });
   }
 
   req.user = decoded;
   next();
 }
 
-// ============================================
-// REST API - AUTENTYKACJA
-// ============================================
-
-// Rejestracja
+// ===========================================
+// REST API - AUTHENTICATION
+// ===========================================
 app.post("/api/auth/register", async (req, res) => {
   const { username, password } = req.body;
 
-  // Walidacja
   if (!username || username.length < 3 || username.length > 15) {
-    return res.status(400).json({ error: "Nick musi mieć 3-15 znaków" });
+    return res.status(400).json({ error: "Nick musi miec 3-15 znakow" });
   }
   if (!password || password.length < 4) {
-    return res.status(400).json({ error: "Hasło musi mieć min. 4 znaki" });
+    return res.status(400).json({ error: "Haslo musi miec min. 4 znaki" });
   }
 
-  // Sprawdź czy nick zajęty
   if (db.users.find((u) => u.username.toLowerCase() === username.toLowerCase())) {
-    return res.status(400).json({ error: "Ten nick jest już zajęty" });
+    return res.status(400).json({ error: "Ten nick jest juz zajety" });
   }
 
-  // Hashuj hasło
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // Utwórz użytkownika
   const newUser = {
     id: uuidv4(),
     username: username.trim(),
@@ -175,9 +159,8 @@ app.post("/api/auth/register", async (req, res) => {
   db.users.push(newUser);
   saveDatabase();
 
-  console.log(`✅ Nowy użytkownik: ${username}`);
+  console.log(`[AUTH] Nowy uzytkownik: ${username}`);
 
-  // Zwróć token
   const token = generateToken(newUser);
   res.json({
     token,
@@ -190,28 +173,24 @@ app.post("/api/auth/register", async (req, res) => {
   });
 });
 
-// Logowanie
 app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body;
 
-  // Znajdź użytkownika
   const user = db.users.find(
     (u) => u.username.toLowerCase() === username.toLowerCase()
   );
 
   if (!user) {
-    return res.status(401).json({ error: "Nieprawidłowy nick lub hasło" });
+    return res.status(401).json({ error: "Nieprawidlowy nick lub haslo" });
   }
 
-  // Sprawdź hasło
   const validPassword = await bcrypt.compare(password, user.password);
   if (!validPassword) {
-    return res.status(401).json({ error: "Nieprawidłowy nick lub hasło" });
+    return res.status(401).json({ error: "Nieprawidlowy nick lub haslo" });
   }
 
-  console.log(`🔓 Zalogowano: ${username}`);
+  console.log(`[AUTH] Zalogowano: ${username}`);
 
-  // Zwróć token
   const token = generateToken(user);
   res.json({
     token,
@@ -224,11 +203,10 @@ app.post("/api/auth/login", async (req, res) => {
   });
 });
 
-// Pobierz profil (z tokenem)
 app.get("/api/auth/me", authMiddleware, (req, res) => {
   const user = db.users.find((u) => u.id === req.user.id);
   if (!user) {
-    return res.status(404).json({ error: "Użytkownik nie istnieje" });
+    return res.status(404).json({ error: "Uzytkownik nie istnieje" });
   }
 
   res.json({
@@ -239,21 +217,19 @@ app.get("/api/auth/me", authMiddleware, (req, res) => {
   });
 });
 
-// ============================================
-// REST API - PROFIL
-// ============================================
-
-// Aktualizuj avatar
+// ===========================================
+// REST API - PROFILE
+// ===========================================
 app.put("/api/profile/avatar", authMiddleware, (req, res) => {
   const { avatar } = req.body;
 
   if (!AVATAR_PRESETS.includes(avatar)) {
-    return res.status(400).json({ error: "Nieprawidłowy avatar" });
+    return res.status(400).json({ error: "Nieprawidlowy avatar" });
   }
 
   const user = db.users.find((u) => u.id === req.user.id);
   if (!user) {
-    return res.status(404).json({ error: "Użytkownik nie istnieje" });
+    return res.status(404).json({ error: "Uzytkownik nie istnieje" });
   }
 
   user.avatar = avatar;
@@ -262,19 +238,76 @@ app.put("/api/profile/avatar", authMiddleware, (req, res) => {
   res.json({ avatar: user.avatar });
 });
 
-// Pobierz dostępne avatary
 app.get("/api/profile/avatars", (req, res) => {
   res.json(AVATAR_PRESETS);
 });
 
-// ============================================
-// REST API - LOBBY
-// ============================================
+app.put("/api/profile/username", authMiddleware, async (req, res) => {
+  const { username } = req.body;
 
-// Lista wszystkich lobby (bez FINISHED)
+  if (!username || username.length < 3 || username.length > 15) {
+    return res.status(400).json({ error: "Nick musi miec 3-15 znakow" });
+  }
+
+  const existingUser = db.users.find(
+    (u) => u.username.toLowerCase() === username.toLowerCase() && u.id !== req.user.id
+  );
+  if (existingUser) {
+    return res.status(400).json({ error: "Ten nick jest juz zajety" });
+  }
+
+  const user = db.users.find((u) => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: "Uzytkownik nie istnieje" });
+  }
+
+  user.username = username.trim();
+  saveDatabase();
+
+  console.log(`[AUTH] Zmiana nicku: ${req.user.username} -> ${username}`);
+
+  res.json({ 
+    id: user.id,
+    username: user.username,
+    avatar: user.avatar,
+    stats: user.stats,
+  });
+});
+
+app.put("/api/profile/password", authMiddleware, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword) {
+    return res.status(400).json({ error: "Podaj aktualne haslo" });
+  }
+  if (!newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: "Nowe haslo musi miec min. 4 znaki" });
+  }
+
+  const user = db.users.find((u) => u.id === req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: "Uzytkownik nie istnieje" });
+  }
+
+  const validPassword = await bcrypt.compare(currentPassword, user.password);
+  if (!validPassword) {
+    return res.status(401).json({ error: "Nieprawidlowe aktualne haslo" });
+  }
+
+  user.password = await bcrypt.hash(newPassword, 10);
+  saveDatabase();
+
+  console.log(`[AUTH] Password changed for: ${user.username}`);
+
+  res.json({ message: "Haslo zostalo zmienione" });
+});
+
+// ===========================================
+// REST API - LOBBY
+// ===========================================
 app.get("/api/lobbies", authMiddleware, (req, res) => {
   const lobbies = db.lobbies
-    .filter((lobby) => lobby.status !== "FINISHED") // Nie pokazuj zakończonych
+    .filter((lobby) => lobby.status !== "FINISHED")
     .map((lobby) => ({
       id: lobby.id,
       name: lobby.name,
@@ -289,17 +322,15 @@ app.get("/api/lobbies", authMiddleware, (req, res) => {
   res.json(lobbies);
 });
 
-// Utwórz nowe lobby
 app.post("/api/lobbies", authMiddleware, (req, res) => {
   const { name, maxPlayers = 4 } = req.body;
   const user = db.users.find((u) => u.id === req.user.id);
 
-  // Sprawdź czy użytkownik nie jest już w innym AKTYWNYM lobby (ignoruj FINISHED)
   const existingLobby = db.lobbies.find((l) =>
     l.status !== "FINISHED" && l.players.some((p) => p.id === req.user.id)
   );
   if (existingLobby) {
-    return res.status(400).json({ error: "Już jesteś w innym lobby" });
+    return res.status(400).json({ error: "Juz jestes w innym lobby" });
   }
 
   const newLobby = {
@@ -318,7 +349,7 @@ app.post("/api/lobbies", authMiddleware, (req, res) => {
     ],
     maxPlayers: Math.min(Math.max(maxPlayers, 2), 8),
     mode: "501",
-    status: "WAITING", // WAITING, PLAYING, FINISHED
+    status: "WAITING",
     createdAt: new Date().toISOString(),
     gameState: null,
   };
@@ -326,12 +357,11 @@ app.post("/api/lobbies", authMiddleware, (req, res) => {
   db.lobbies.push(newLobby);
   saveDatabase();
 
-  console.log(`🏠 Nowe lobby: ${newLobby.name} (host: ${user.username})`);
+  console.log(`[LOBBY] Nowe lobby: ${newLobby.name} (host: ${user.username})`);
 
   res.json(newLobby);
 });
 
-// Dołącz do lobby
 app.post("/api/lobbies/:id/join", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
   const user = db.users.find((u) => u.id === req.user.id);
@@ -341,27 +371,24 @@ app.post("/api/lobbies/:id/join", authMiddleware, (req, res) => {
   }
 
   if (lobby.status !== "WAITING") {
-    return res.status(400).json({ error: "Gra już trwa" });
+    return res.status(400).json({ error: "Gra juz trwa" });
   }
 
   if (lobby.players.length >= lobby.maxPlayers) {
-    return res.status(400).json({ error: "Lobby jest pełne" });
+    return res.status(400).json({ error: "Lobby jest pelne" });
   }
 
-  // Sprawdź czy już w tym lobby
   if (lobby.players.some((p) => p.id === req.user.id)) {
     return res.json(lobby);
   }
 
-  // Sprawdź czy w innym AKTYWNYM lobby (ignoruj FINISHED)
   const existingLobby = db.lobbies.find((l) =>
     l.status !== "FINISHED" && l.players.some((p) => p.id === req.user.id)
   );
   if (existingLobby) {
-    return res.status(400).json({ error: "Już jesteś w innym lobby" });
+    return res.status(400).json({ error: "Juz jestes w innym lobby" });
   }
 
-  // Dodaj gracza
   lobby.players.push({
     id: user.id,
     username: user.username,
@@ -372,15 +399,13 @@ app.post("/api/lobbies/:id/join", authMiddleware, (req, res) => {
 
   saveDatabase();
 
-  console.log(`👤 ${user.username} dołączył do: ${lobby.name}`);
+  console.log(`[LOBBY] ${user.username} dolaczyl do: ${lobby.name}`);
 
-  // Powiadom innych przez Socket.IO
   io.to(lobby.id).emit("lobby_update", lobby);
 
   res.json(lobby);
 });
 
-// Opuść lobby
 app.post("/api/lobbies/:id/leave", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -390,13 +415,12 @@ app.post("/api/lobbies/:id/leave", authMiddleware, (req, res) => {
 
   const playerIndex = lobby.players.findIndex((p) => p.id === req.user.id);
   if (playerIndex === -1) {
-    return res.status(400).json({ error: "Nie jesteś w tym lobby" });
+    return res.status(400).json({ error: "Nie jestes w tym lobby" });
   }
 
   const leavingPlayer = lobby.players[playerIndex];
   lobby.players.splice(playerIndex, 1);
 
-  // Jeśli host opuścił, usuń lobby lub przekaż hosta
   if (leavingPlayer.isHost) {
     if (lobby.players.length > 0) {
       lobby.players[0].isHost = true;
@@ -404,33 +428,28 @@ app.post("/api/lobbies/:id/leave", authMiddleware, (req, res) => {
       lobby.hostName = lobby.players[0].username;
       
       saveDatabase();
-      console.log(`👑 Nowy host: ${lobby.hostName} w lobby: ${lobby.name}`);
+      console.log(`[LOBBY] Nowy host: ${lobby.hostName} w lobby: ${lobby.name}`);
       
-      // Powiadom o zmianie hosta i aktualizacji lobby
       io.to(lobby.id).emit("host_changed", { newHostId: lobby.hostId, newHostName: lobby.hostName });
       io.to(lobby.id).emit("lobby_update", lobby);
     } else {
-      // Usuń puste lobby
       db.lobbies = db.lobbies.filter((l) => l.id !== lobby.id);
       saveDatabase();
-      console.log(`🗑️ Usunięto puste lobby: ${lobby.name}`);
+      console.log(`[LOBBY] Usunieto puste lobby: ${lobby.name}`);
       
-      // Powiadom o usunięciu lobby
       io.to(lobby.id).emit("lobby_deleted");
-      return res.json({ message: "Lobby usunięte" });
+      return res.json({ message: "Lobby usuniete" });
     }
   } else {
     saveDatabase();
-    // Powiadom innych
     io.to(lobby.id).emit("lobby_update", lobby);
   }
 
-  console.log(`👋 ${leavingPlayer.username} opuścił: ${lobby.name}`);
+  console.log(`[LOBBY] ${leavingPlayer.username} opuscil: ${lobby.name}`);
 
   res.json({ message: "Opuszczono lobby" });
 });
 
-// Pobierz szczegóły lobby
 app.get("/api/lobbies/:id", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -441,7 +460,6 @@ app.get("/api/lobbies/:id", authMiddleware, (req, res) => {
   res.json(lobby);
 });
 
-// Zmień tryb gry (tylko host)
 app.put("/api/lobbies/:id/mode", authMiddleware, (req, res) => {
   const { mode } = req.body;
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
@@ -451,12 +469,12 @@ app.put("/api/lobbies/:id/mode", authMiddleware, (req, res) => {
   }
 
   if (lobby.hostId !== req.user.id) {
-    return res.status(403).json({ error: "Tylko host może zmienić tryb" });
+    return res.status(403).json({ error: "Tylko host moze zmienic tryb" });
   }
 
   const validModes = ["301", "501", "CRICKET", "KILLER", "AROUND_THE_CLOCK", "SHANGHAI"];
   if (!validModes.includes(mode)) {
-    return res.status(400).json({ error: "Nieprawidłowy tryb gry" });
+    return res.status(400).json({ error: "Nieprawidlowy tryb gry" });
   }
 
   lobby.mode = mode;
@@ -467,19 +485,25 @@ app.put("/api/lobbies/:id/mode", authMiddleware, (req, res) => {
   res.json(lobby);
 });
 
-// ============================================
+// ===========================================
 // REST API - GAME
-// ============================================
-
-// Sprawdź czy można rozpocząć grę
+// ===========================================
 app.get("/api/game/can-start", authMiddleware, (req, res) => {
   res.json({
-    canStart: db.activeGame === null,
+    canStart: db.activeGame === null && isDartboardConnected(),
     activeGameId: db.activeGame,
+    dartboardConnected: isDartboardConnected(),
   });
 });
 
-// Rozpocznij grę (tylko host)
+app.get("/api/dartboard/status", authMiddleware, (req, res) => {
+  res.json({
+    connected: isDartboardConnected(),
+    port: SERIAL_PORT_PATH,
+    baudRate: SERIAL_BAUD_RATE,
+  });
+});
+
 app.post("/api/lobbies/:id/start", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -488,26 +512,36 @@ app.post("/api/lobbies/:id/start", authMiddleware, (req, res) => {
   }
 
   if (lobby.hostId !== req.user.id) {
-    return res.status(403).json({ error: "Tylko host może rozpocząć grę" });
+    return res.status(403).json({ error: "Tylko host moze rozpoczac gre" });
   }
 
   if (lobby.players.length < 2) {
     return res.status(400).json({ error: "Potrzeba minimum 2 graczy" });
   }
 
-  // 🎯 KLUCZOWE: Sprawdź czy inna gra nie jest aktywna
-  if (db.activeGame !== null) {
-    const activeLobby = db.lobbies.find((l) => l.id === db.activeGame);
+  if (!isDartboardConnected()) {
     return res.status(400).json({
-      error: `Tarcza jest zajęta! Trwa gra: ${activeLobby?.name || "nieznana"}`,
+      error: "Tarcza nie jest podlaczona! Podlacz Arduino i sprobuj ponownie.",
     });
   }
 
-  // Rozpocznij grę
+  if (db.activeGame !== null) {
+    const activeLobby = db.lobbies.find((l) => l.id === db.activeGame);
+    
+    if (!activeLobby || activeLobby.status !== "PLAYING") {
+      console.log(`[WARN] Czyszczenie osieroconego activeGame: ${db.activeGame}`);
+      db.activeGame = null;
+      saveDatabase();
+    } else {
+      return res.status(400).json({
+        error: `Tarcza jest zajeta! Trwa gra: ${activeLobby.name}`,
+      });
+    }
+  }
+
   db.activeGame = lobby.id;
   lobby.status = "PLAYING";
 
-  // Inicjalizuj stan gry
   const startingScore = lobby.mode === "301" ? 301 : 501;
 
   lobby.gameState = {
@@ -520,7 +554,7 @@ app.post("/api/lobbies/:id/start", authMiddleware, (req, res) => {
     isDoubleOut: true,
     winner: null,
     checkoutHint: null,
-    throwHistory: [], // Historia rzutów
+    throwHistory: [],
     players: lobby.players.map((p) => ({
       id: p.id,
       name: p.username,
@@ -530,21 +564,18 @@ app.post("/api/lobbies/:id/start", authMiddleware, (req, res) => {
     })),
   };
 
-  // Pierwszy gracz zaczyna
   lobby.gameState.players[0].isActive = true;
 
   saveDatabase();
 
-  console.log(`🎮 Gra rozpoczęta: ${lobby.name} (tryb: ${lobby.mode})`);
+  console.log(`[GAME] Gra rozpoczeta: ${lobby.name} (tryb: ${lobby.mode})`);
 
-  // Powiadom wszystkich w lobby
   io.to(lobby.id).emit("game_started", lobby.gameState);
   io.to(lobby.id).emit("game_update", lobby.gameState);
 
   res.json(lobby.gameState);
 });
 
-// Zakończ grę (tylko host, po zakończeniu normalnym)
 app.post("/api/lobbies/:id/end", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -553,10 +584,9 @@ app.post("/api/lobbies/:id/end", authMiddleware, (req, res) => {
   }
 
   if (lobby.hostId !== req.user.id) {
-    return res.status(403).json({ error: "Tylko host może zakończyć grę" });
+    return res.status(403).json({ error: "Tylko host moze zakonczyc gre" });
   }
 
-  // Zwolnij tarczę
   if (db.activeGame === lobby.id) {
     db.activeGame = null;
   }
@@ -566,14 +596,13 @@ app.post("/api/lobbies/:id/end", authMiddleware, (req, res) => {
 
   saveDatabase();
 
-  console.log(`⏹️ Gra zakończona: ${lobby.name}`);
+  console.log(`[GAME] Gra zakonczona: ${lobby.name}`);
 
   io.to(lobby.id).emit("game_ended");
 
-  res.json({ message: "Gra zakończona" });
+  res.json({ message: "Gra zakonczona" });
 });
 
-// Przerwij grę (każdy gracz może przerwać - kończy grę dla wszystkich)
 app.post("/api/lobbies/:id/abort", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -581,13 +610,11 @@ app.post("/api/lobbies/:id/abort", authMiddleware, (req, res) => {
     return res.status(404).json({ error: "Lobby nie istnieje" });
   }
 
-  // Sprawdź czy użytkownik jest w tym lobby
   const player = lobby.players.find((p) => p.id === req.user.id);
   if (!player) {
-    return res.status(403).json({ error: "Nie jesteś w tym lobby" });
+    return res.status(403).json({ error: "Nie jestes w tym lobby" });
   }
 
-  // Sprawdź czy gra trwa
   if (lobby.status !== "PLAYING") {
     return res.status(400).json({ error: "Gra nie jest w trakcie" });
   }
@@ -595,24 +622,20 @@ app.post("/api/lobbies/:id/abort", authMiddleware, (req, res) => {
   const user = db.users.find((u) => u.id === req.user.id);
   const abortedBy = user ? user.username : "Nieznany";
 
-  // Zwolnij tarczę
   if (db.activeGame === lobby.id) {
     db.activeGame = null;
   }
 
-  // Usuń lobby po przerwaniu gry
   db.lobbies = db.lobbies.filter((l) => l.id !== lobby.id);
   saveDatabase();
 
-  console.log(`❌ Gra przerwana przez ${abortedBy}: ${lobby.name}`);
+  console.log(`[GAME] Gra przerwana przez ${abortedBy}: ${lobby.name}`);
 
-  // Powiadom wszystkich graczy o przerwaniu
   io.to(lobby.id).emit("game_aborted", { abortedBy });
 
   res.json({ message: "Gra przerwana" });
 });
 
-// Symuluj następny rzut (DEV - przycisk ręcznej symulacji / testowanie bez Arduino)
 app.post("/api/lobbies/:id/simulate-throw", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -624,22 +647,19 @@ app.post("/api/lobbies/:id/simulate-throw", authMiddleware, (req, res) => {
     return res.status(400).json({ error: "Gra nie jest w trakcie" });
   }
 
-  // Generuj losowy rzut do testowania (gdy Arduino niedostępne)
   const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25];
   const multipliers = [1, 2, 3];
   const value = values[Math.floor(Math.random() * values.length)];
   let multiplier = multipliers[Math.floor(Math.random() * multipliers.length)];
-  if (value === 25 && multiplier === 3) multiplier = 2; // Bull nie może być triple
+  if (value === 25 && multiplier === 3) multiplier = 2;
   
   const dartThrow = { value, multiplier, total: value * multiplier };
   
-  // Wykonaj rzut
   processThrow(lobby, dartThrow);
 
   res.json(lobby.gameState);
 });
 
-// Cofnij ostatni rzut (tylko host)
 app.post("/api/lobbies/:id/undo-throw", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -648,7 +668,7 @@ app.post("/api/lobbies/:id/undo-throw", authMiddleware, (req, res) => {
   }
 
   if (lobby.hostId !== req.user.id) {
-    return res.status(403).json({ error: "Tylko host może cofać rzuty" });
+    return res.status(403).json({ error: "Tylko host moze cofac rzuty" });
   }
 
   if (!lobby.gameState || lobby.gameState.status !== "PLAYING") {
@@ -657,50 +677,39 @@ app.post("/api/lobbies/:id/undo-throw", authMiddleware, (req, res) => {
 
   const gs = lobby.gameState;
   
-  // Sprawdź czy jest co cofać
   if (!gs.throwHistory || gs.throwHistory.length === 0) {
-    return res.status(400).json({ error: "Brak rzutów do cofnięcia" });
+    return res.status(400).json({ error: "Brak rzutow do cofniecia" });
   }
 
-  // Pobierz ostatni rzut z historii
   const lastHistoryItem = gs.throwHistory.pop();
   
-  // Znajdź gracza który wykonał ten rzut
   const player = gs.players.find(p => p.id === lastHistoryItem.playerId);
   if (!player) {
-    return res.status(400).json({ error: "Nie można znaleźć gracza" });
+    return res.status(400).json({ error: "Nie mozna znalezc gracza" });
   }
 
-  // Przywróć punkty
   if (!lastHistoryItem.isBust) {
     player.score += lastHistoryItem.throw.total;
   }
 
-  // Usuń rzut z throwsInRound jeśli to ten sam gracz który teraz rzuca
   const currentPlayer = gs.players[gs.currentPlayerIndex];
   
   if (currentPlayer.id === player.id) {
-    // Ten sam gracz - usuń z jego rzutów w rundzie
     if (currentPlayer.throwsInRound.length > 0) {
       currentPlayer.throwsInRound.pop();
     }
   } else {
-    // Inny gracz - musimy wrócić do poprzedniego gracza
     gs.players[gs.currentPlayerIndex].isActive = false;
     
-    // Znajdź indeks gracza który rzucał
     const playerIndex = gs.players.findIndex(p => p.id === player.id);
     gs.currentPlayerIndex = playerIndex;
     gs.players[playerIndex].isActive = true;
     
-    // Przywróć jego rzuty w rundzie (jeśli miał 3, teraz ma 2)
-    // Rzuty są już w throwsInRound, więc usuwamy ostatni
     if (player.throwsInRound.length > 0) {
       player.throwsInRound.pop();
     }
   }
 
-  // Zaktualizuj lastThrow na poprzedni z historii
   if (gs.throwHistory.length > 0) {
     const prevItem = gs.throwHistory[gs.throwHistory.length - 1];
     gs.lastThrow = prevItem.throw;
@@ -710,23 +719,20 @@ app.post("/api/lobbies/:id/undo-throw", authMiddleware, (req, res) => {
     gs.isBust = false;
   }
 
-  // Zaktualizuj checkout hint
   gs.checkoutHint = getCheckoutHint(gs.players[gs.currentPlayerIndex].score);
 
   saveDatabase();
 
-  console.log(`↩️ Cofnięto rzut: ${lastHistoryItem.playerName} - ${lastHistoryItem.throw.total}pkt`);
+  console.log(`[GAME] Cofnieto rzut: ${lastHistoryItem.playerName} - ${lastHistoryItem.throw.total}pkt`);
 
   io.to(lobby.id).emit("game_update", gs);
 
   res.json(gs);
 });
 
-// ============================================
-// SOCKET.IO - REAL-TIME
-// ============================================
-
-// Weryfikacja tokenu dla Socket.IO
+// ===========================================
+// SOCKET.IO - REAL-TIME COMMUNICATION
+// ===========================================
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) {
@@ -735,7 +741,7 @@ io.use((socket, next) => {
 
   const decoded = verifyToken(token);
   if (!decoded) {
-    return next(new Error("Nieprawidłowy token"));
+    return next(new Error("Nieprawidlowy token"));
   }
 
   socket.user = decoded;
@@ -743,14 +749,12 @@ io.use((socket, next) => {
 });
 
 io.on("connection", (socket) => {
-  console.log(`🔌 Socket połączony: ${socket.user.username}`);
+  console.log(`[SOCKET] Polaczony: ${socket.user.username}`);
 
-  // Dołącz do pokoju lobby
   socket.on("join_lobby", (lobbyId) => {
     socket.join(lobbyId);
-    console.log(`📍 ${socket.user.username} dołączył do pokoju: ${lobbyId}`);
+    console.log(`[SOCKET] ${socket.user.username} dolaczyl do pokoju: ${lobbyId}`);
 
-    // Wyślij aktualny stan lobby
     const lobby = db.lobbies.find((l) => l.id === lobbyId);
     if (lobby) {
       socket.emit("lobby_update", lobby);
@@ -760,21 +764,19 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Opuść pokój lobby
   socket.on("leave_lobby", (lobbyId) => {
     socket.leave(lobbyId);
-    console.log(`📍 ${socket.user.username} opuścił pokój: ${lobbyId}`);
+    console.log(`[SOCKET] ${socket.user.username} opuscil pokoj: ${lobbyId}`);
   });
 
-  // Rozłączenie
   socket.on("disconnect", () => {
-    console.log(`🔌 Socket rozłączony: ${socket.user.username}`);
+    console.log(`[SOCKET] Rozlaczony: ${socket.user.username}`);
   });
 });
 
-// ============================================
-// TABELA CHECKOUT HINTS
-// ============================================
+// ===========================================
+// CHECKOUT HINTS TABLE
+// ===========================================
 
 const checkoutTable = {
   170: ["T20", "T20", "Bull"],
@@ -797,7 +799,9 @@ function getCheckoutHint(score) {
   return checkoutTable[score] || null;
 }
 
-// Przetwórz rzut z Arduino (dartThrow pochodzi z fizycznej tarczy)
+/**
+ * Process dart throw from Arduino dartboard
+ */
 function processThrow(lobby, dartThrow) {
   const gs = lobby.gameState;
   if (!gs || gs.status !== "PLAYING") return;
@@ -805,7 +809,7 @@ function processThrow(lobby, dartThrow) {
   const activePlayer = gs.players[gs.currentPlayerIndex];
 
   console.log(
-    `🎯 ${activePlayer.name}: ${dartThrow.multiplier === 3 ? "T" : dartThrow.multiplier === 2 ? "D" : ""}${dartThrow.value} (${dartThrow.total})`
+    `[THROW] ${activePlayer.name}: ${dartThrow.multiplier === 3 ? "T" : dartThrow.multiplier === 2 ? "D" : ""}${dartThrow.value} (${dartThrow.total})`
   );
 
   gs.lastThrow = dartThrow;
@@ -814,9 +818,8 @@ function processThrow(lobby, dartThrow) {
   let newScore = activePlayer.score - dartThrow.total;
   let isBust = false;
 
-  // Bust
   if (newScore < 0 || newScore === 1) {
-    console.log(`💥 BUST!`);
+    console.log(`[THROW] BUST!`);
     gs.isBust = true;
     isBust = true;
     newScore = activePlayer.score;
@@ -826,23 +829,22 @@ function processThrow(lobby, dartThrow) {
     activePlayer.score = newScore;
   }
 
-  // Wygrana
   if (newScore === 0) {
     if (gs.isDoubleOut && dartThrow.multiplier !== 2) {
-      console.log(`💥 BUST! Wymagany Double Out!`);
+      console.log(`[THROW] BUST! Double Out required!`);
       gs.isBust = true;
       isBust = true;
       activePlayer.score = activePlayer.score + dartThrow.total;
       activePlayer.throwsInRound = [];
     } else {
-      // Dodaj do historii przed zakończeniem
       addToHistory(gs, activePlayer, dartThrow, false);
       
-      console.log(`🏆 ${activePlayer.name} WYGRYWA!`);
+      console.log(`[GAME] ${activePlayer.name} WINS!`);
       gs.winner = activePlayer.id;
       gs.status = "FINISHED";
 
-      // Zwolnij tarczę
+      updatePlayerStats(lobby, activePlayer.id, dartThrow.total);
+
       db.activeGame = null;
       lobby.status = "FINISHED";
       saveDatabase();
@@ -852,12 +854,10 @@ function processThrow(lobby, dartThrow) {
     }
   }
 
-  // Dodaj do historii rzutów
   addToHistory(gs, activePlayer, dartThrow, isBust);
 
   gs.checkoutHint = getCheckoutHint(activePlayer.score);
 
-  // Zmiana gracza po 3 rzutach lub buście
   if (activePlayer.throwsInRound.length >= 3 || gs.isBust) {
     gs.players[gs.currentPlayerIndex].isActive = false;
     gs.currentPlayerIndex = (gs.currentPlayerIndex + 1) % gs.players.length;
@@ -875,7 +875,9 @@ function processThrow(lobby, dartThrow) {
   io.to(lobby.id).emit("game_update", gs);
 }
 
-// Dodaj rzut do historii (max 10 elementów)
+/**
+ * Adds a throw to game history (max 10 entries)
+ */
 function addToHistory(gs, player, dartThrow, isBust) {
   if (!gs.throwHistory) {
     gs.throwHistory = [];
@@ -890,19 +892,73 @@ function addToHistory(gs, player, dartThrow, isBust) {
     timestamp: Date.now(),
   });
 
-  // Ogranicz do 10 ostatnich
   if (gs.throwHistory.length > 10) {
     gs.throwHistory = gs.throwHistory.slice(-10);
   }
 }
 
-// ============================================
-// ARDUINO SERIAL PORT - FIZYCZNA TARCZA
-// ============================================
+/**
+ * Updates player statistics after game completion
+ */
+function updatePlayerStats(lobby, winnerId, checkoutScore) {
+  const gs = lobby.gameState;
+  if (!gs) return;
+
+  const startingScore = gs.mode === "301" ? 301 : 501;
+  
+  gs.players.forEach((gamePlayer) => {
+    const user = db.users.find((u) => u.id === gamePlayer.id);
+    if (!user) return;
+
+    user.stats.gamesPlayed++;
+    
+    const pointsScored = startingScore - gamePlayer.score;
+    user.stats.totalPoints += pointsScored;
+    
+    if (gamePlayer.id === winnerId) {
+      user.stats.gamesWon++;
+      
+      if (checkoutScore > user.stats.highestCheckout) {
+        user.stats.highestCheckout = checkoutScore;
+      }
+    }
+    
+    const roundsPlayed = Math.ceil(gs.round / gs.players.length);
+    if (roundsPlayed > 0) {
+      const avgThisGame = pointsScored / roundsPlayed;
+      const prevGames = user.stats.gamesPlayed - 1;
+      if (prevGames > 0) {
+        user.stats.averagePerRound = 
+          (user.stats.averagePerRound * prevGames + avgThisGame) / user.stats.gamesPlayed;
+      } else {
+        user.stats.averagePerRound = avgThisGame;
+      }
+    }
+    
+    user.stats.favoriteMode = gs.mode;
+    
+    console.log(`[STATS] ${user.username}: games=${user.stats.gamesPlayed}, wins=${user.stats.gamesWon}, points=${user.stats.totalPoints}`);
+  });
+}
+
+// ===========================================
+// ARDUINO SERIAL PORT
+// ===========================================
 
 let serialPort = null;
 let serialParser = null;
+let isArduinoConnected = false;
 
+/**
+ * Checks if dartboard is connected
+ */
+function isDartboardConnected() {
+  return isArduinoConnected && serialPort && serialPort.isOpen;
+}
+
+/**
+ * Initializes serial port connection to Arduino dartboard
+ */
 function initializeSerialPort() {
   try {
     serialPort = new SerialPort({
@@ -911,91 +967,104 @@ function initializeSerialPort() {
       autoOpen: true,
     });
 
-    // Parser do odczytu linii (JSON kończy się newline)
     serialParser = serialPort.pipe(new ReadlineParser({ delimiter: "\n" }));
 
     serialPort.on("open", () => {
-      console.log(`🔗 Arduino połączone na ${SERIAL_PORT_PATH} @ ${SERIAL_BAUD_RATE} baud`);
+      isArduinoConnected = true;
+      console.log(`[ARDUINO] Connected on ${SERIAL_PORT_PATH} @ ${SERIAL_BAUD_RATE} baud`);
+      io.emit("dartboard_status", { connected: true });
     });
 
     serialPort.on("error", (err) => {
-      console.error(`⚠️ Błąd portu szeregowego: ${err.message}`);
-      console.log("📡 Serwer działa dalej bez fizycznej tarczy.");
+      isArduinoConnected = false;
+      console.error(`[ARDUINO] Serial port error: ${err.message}`);
+      console.log("[ARDUINO] Server continues without physical dartboard.");
+      io.emit("dartboard_status", { connected: false });
     });
 
     serialPort.on("close", () => {
-      console.log("🔌 Arduino rozłączone. Próba ponownego połączenia za 5s...");
+      isArduinoConnected = false;
+      console.log("[ARDUINO] Disconnected. Reconnecting in 5s...");
+      io.emit("dartboard_status", { connected: false });
       setTimeout(initializeSerialPort, 5000);
     });
 
-    // Nasłuchuj danych z Arduino
     serialParser.on("data", (line) => {
       handleArduinoData(line);
     });
 
   } catch (err) {
-    console.error(`⚠️ Nie można otworzyć portu ${SERIAL_PORT_PATH}: ${err.message}`);
-    console.log("📡 Serwer działa bez Arduino. Spróbuj ponownie za 10s...");
+    isArduinoConnected = false;
+    console.error(`[ARDUINO] Cannot open port ${SERIAL_PORT_PATH}: ${err.message}`);
+    console.log("[ARDUINO] Server running without Arduino. Retry in 10s...");
     setTimeout(initializeSerialPort, 10000);
   }
 }
 
+/**
+ * Handles incoming data from Arduino dartboard
+ */
 function handleArduinoData(line) {
-  // Parsowanie JSON z Arduino
   let data;
   try {
     data = JSON.parse(line.trim());
   } catch (err) {
-    console.warn(`⚠️ Nieprawidłowy JSON z Arduino: ${line}`);
+    console.warn(`[ARDUINO] Invalid JSON: ${line}`);
     return;
   }
 
-  // Sprawdź czy to zdarzenie trafienia
   if (data.event !== "hit") {
-    console.log(`📨 Arduino event: ${data.event}`, data);
+    console.log(`[ARDUINO] Event: ${data.event}`, data);
     return;
   }
 
-  console.log(`🎯 Arduino HIT: sector=${data.sector}, multiplier=${data.multiplier}, score=${data.score}`);
+  console.log(`[ARDUINO] HIT: sector=${data.sector}, multiplier=${data.multiplier}, score=${data.score}`);
 
-  // Mapowanie danych Arduino na format gry
   const dartThrow = {
-    value: data.sector,       // arduino.sector -> dartThrow.value
-    multiplier: data.multiplier, // arduino.multiplier -> dartThrow.multiplier  
-    total: data.score,        // arduino.score -> dartThrow.total
+    value: data.sector,
+    multiplier: data.multiplier,
+    total: data.score,
   };
 
-  // Znajdź aktywną grę
   if (!db.activeGame) {
-    console.log("⚠️ Trafienie zignorowane - brak aktywnej gry");
+    console.log("[ARDUINO] Hit ignored - no active game");
     return;
   }
 
   const lobby = db.lobbies.find((l) => l.id === db.activeGame);
   if (!lobby || !lobby.gameState || lobby.gameState.status !== "PLAYING") {
-    console.log("⚠️ Trafienie zignorowane - gra nie jest w trakcie");
+    console.log("[ARDUINO] Hit ignored - game not in progress");
     return;
   }
 
-  // Przetwórz rzut w logice gry 501/301
   processThrow(lobby, dartThrow);
 }
 
-// Inicjalizuj połączenie z Arduino po starcie serwera
 setTimeout(() => {
-  console.log("🔍 Szukam Arduino na porcie szeregowym...");
+  console.log("[ARDUINO] Searching for Arduino on serial port...");
   initializeSerialPort();
 }, 1000);
 
-// ============================================
-// START SERWERA
-// ============================================
-const HOST = "0.0.0.0"; // Nasłuchuj na wszystkich interfejsach (dostęp z sieci)
+// ===========================================
+// SPA ROUTING (React Router)
+// ===========================================
+app.get("/{*splat}", (req, res) => {
+  res.sendFile(path.join(FRONTEND_DIST, "index.html"));
+});
+
+// ===========================================
+// SERVER START
+// ===========================================
+const HOST = "0.0.0.0";
 
 httpServer.listen(PORT, HOST, () => {
-  console.log(`🚀 Serwer działa na http://${HOST}:${PORT}`);
-  console.log(`📡 REST API: http://192.168.1.65:${PORT}/api`);
-  console.log(`🔌 WebSocket: ws://192.168.1.65:${PORT}`);
-  console.log(`📱 Otwórz na telefonie: http://192.168.1.65:5173`);
-  console.log("====================================");
+  console.log(`Smart Dartboard Server (Production)`);
+  console.log(`====================================`);
+  console.log(`Application: http://localhost:${PORT}`);
+  console.log(`API: http://localhost:${PORT}/api`);
+  console.log(`WebSocket: ws://localhost:${PORT}`);
+  console.log(``);
+  console.log(`Local network access:`);
+  console.log(`   http://<YOUR_IP>:${PORT}`);
+  console.log(`====================================`);
 });

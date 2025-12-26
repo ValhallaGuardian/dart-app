@@ -102,11 +102,17 @@ const LobbyScreen = () => {
     setError('');
 
     try {
-      // Sprawdź czy tarcza jest wolna
-      const { canStart } = await gameApi.canStart();
+      // Sprawdź czy tarcza jest wolna i podłączona
+      const { canStart, dartboardConnected, activeGameId } = await gameApi.canStart();
       
       if (!canStart) {
-        setError('Tarcza jest zajęta! Inna gra jest w trakcie.');
+        if (!dartboardConnected) {
+          setError('Tarcza nie jest podłączona! Podłącz Arduino i spróbuj ponownie.');
+        } else if (activeGameId) {
+          setError('Tarcza jest zajęta! Inna gra jest w trakcie.');
+        } else {
+          setError('Nie można rozpocząć gry. Spróbuj ponownie.');
+        }
         setIsStarting(false);
         return;
       }

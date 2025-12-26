@@ -1,6 +1,34 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import reactLogo from '../assets/react.svg';
+import type { AvatarPreset } from '../types';
+
+const AVATAR_ICONS: Record<AvatarPreset, string> = {
+  default: '👤',
+  dart1: '🎯',
+  dart2: '🎪',
+  dart3: '🏆',
+  player1: '😎',
+  player2: '🤠',
+  player3: '🧑‍🚀',
+  player4: '🦸',
+  crown: '👑',
+  target: '🎯',
+  bull: '🐂',
+};
+
+const AVATAR_COLORS: Record<AvatarPreset, string> = {
+  default: 'bg-slate-600',
+  dart1: 'bg-green-600',
+  dart2: 'bg-purple-600',
+  dart3: 'bg-yellow-600',
+  player1: 'bg-blue-600',
+  player2: 'bg-orange-600',
+  player3: 'bg-indigo-600',
+  player4: 'bg-red-600',
+  crown: 'bg-amber-500',
+  target: 'bg-emerald-600',
+  bull: 'bg-rose-600',
+};
 
 const HomeScreen = () => {
   const { user, logout } = useAuth();
@@ -32,13 +60,9 @@ const HomeScreen = () => {
       {/* Profil */}
       <section className="p-6 flex flex-col items-center">
         {/* Avatar */}
-        <div className="w-24 h-24 rounded-full bg-slate-800 border-4 border-green-500 flex items-center justify-center mb-4 overflow-hidden">
-          <img 
-            src={reactLogo} 
-            alt="Avatar" 
-            className="w-16 h-16 animate-spin-slow"
-            style={{ animationDuration: '20s' }}
-          />
+        <div className={`w-24 h-24 rounded-full ${AVATAR_COLORS[user.avatar]} border-4 border-green-500 
+                        flex items-center justify-center mb-4 text-4xl`}>
+          {AVATAR_ICONS[user.avatar]}
         </div>
         
         {/* Nick */}
@@ -55,7 +79,7 @@ const HomeScreen = () => {
         </button>
       </section>
 
-      {/* Statystyki - placeholder */}
+      {/* Statystyki */}
       <section className="px-6 mb-6">
         <h3 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">
           Statystyki
@@ -80,9 +104,6 @@ const HomeScreen = () => {
             <p className="text-slate-400 text-xs">Średnia/rundę</p>
           </div>
         </div>
-        <p className="text-center text-slate-500 text-xs mt-3">
-          Statystyki będą dostępne wkrótce
-        </p>
       </section>
 
       {/* Akcje */}

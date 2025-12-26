@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { lobbyApi } from '../services/api';
 import { socket, connectSocket } from '../services/socket';
-import type { GameState, DartThrow, ThrowHistoryItem } from '../types';
+import type { GameState, DartThrow } from '../types';
 
 const initialState: GameState = {
   mode: '501',
@@ -18,7 +18,7 @@ const initialState: GameState = {
   throwHistory: []
 };
 
-// Helper do formatowania rzutu
+/** Formats dart throw for display */
 const formatThrow = (dart: DartThrow | null): string => {
   if (!dart) return "--";
   if (dart.value === 25) {
@@ -40,7 +40,6 @@ const GameScreen = () => {
   const [showHistory, setShowHistory] = useState(true);
   const [isHost, setIsHost] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
 
   useEffect(() => {
     if (!lobbyId || !token) return;
@@ -107,19 +106,6 @@ const GameScreen = () => {
     } catch {
       setIsAborting(false);
       setShowExitConfirm(false);
-    }
-  };
-
-  const handleSimulateThrow = async () => {
-    if (!lobbyId || isSimulating) return;
-    
-    setIsSimulating(true);
-    try {
-      await lobbyApi.simulateThrow(lobbyId);
-    } catch (err) {
-      console.error('Błąd symulacji:', err);
-    } finally {
-      setIsSimulating(false);
     }
   };
 
@@ -329,22 +315,6 @@ const GameScreen = () => {
 
       {/* Przyciski kontrolne */}
       <div className="w-full max-w-md flex gap-3 mb-4">
-        {/* Symuluj rzut (DEV) */}
-        <button
-          onClick={handleSimulateThrow}
-          disabled={isSimulating || gameState.status !== 'PLAYING'}
-          className="flex-1 py-3 bg-blue-500/20 text-blue-400 border border-blue-500/50 rounded-xl font-medium
-                     active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
-        >
-          {isSimulating ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="animate-spin h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full" />
-            </span>
-          ) : (
-            '🎯 Następny rzut'
-          )}
-        </button>
-        
         {/* Cofnij rzut (tylko host) */}
         {isHost && (
           <button
@@ -358,7 +328,7 @@ const GameScreen = () => {
                 <div className="animate-spin h-4 w-4 border-2 border-orange-400 border-t-transparent rounded-full" />
               </span>
             ) : (
-              '↩️ Cofnij rzut'
+              'Cofnij rzut'
             )}
           </button>
         )}
@@ -368,7 +338,7 @@ const GameScreen = () => {
       <div className="w-full max-w-md text-center py-2">
         {gameState.status === 'FINISHED' && gameState.winner ? (
           <div className="text-2xl font-bold text-green-400">
-            🏆 {gameState.players.find(p => p.id === gameState.winner)?.name} wygrywa!
+            {gameState.players.find(p => p.id === gameState.winner)?.name} wygrywa!
           </div>
         ) : (
           <p className="text-slate-500 text-sm">
