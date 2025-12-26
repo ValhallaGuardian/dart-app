@@ -1,185 +1,147 @@
-# Smart Dartboard Server
+# Serwer Smart Dartboard
 
-Production server for the Smart Dartboard application with Arduino integration.
+Serwer produkcyjny dla aplikacji Smart Dartboard z integracją Arduino.
 
-## Features
+## Funkcjonalności
 
-- **Real-time game management** via Socket.IO
-- **Arduino dartboard integration** via serial port
-- **JWT authentication** for secure user sessions
-- **Multiple game modes**: 501, 301, Cricket, Killer
-- **Player statistics tracking**
-- **Lobby system** with host management
+- **Zarządzanie grą w czasie rzeczywistym** poprzez Socket.IO
+- **Integracja z tarczą Arduino** przez port szeregowy
+- **Uwierzytelnianie JWT** dla bezpiecznych sesji użytkowników
+- **Wiele trybów gry**: 501, 301, Cricket, Killer
+- **Śledzenie statystyk graczy**
+- **System Lobby** z zarządzaniem przez hosta
 
-## Tech Stack
+## Stos Technologiczny
 
 - **Runtime**: Node.js
 - **Framework**: Express 5
 - **Real-time**: Socket.IO
-- **Authentication**: JWT + bcryptjs
+- **Uwierzytelnianie**: JWT + bcryptjs
 - **Hardware**: SerialPort (Arduino)
-- **Database**: JSON file storage
+- **Baza danych**: Przechowywanie w plikach JSON
 
-## Requirements
+## Wymagania
 
 - Node.js 18+
-- Arduino dartboard (optional - server works without it)
+- Tarcza z Arduino (opcjonalnie - serwer działa również bez niej)
 
-## Installation
+## Instalacja
 
 ```bash
 npm install
 ```
+Konfiguracja
+Zmienne środowiskowe (opcjonalne):
 
-## Configuration
+Zmienna	Domyślnie	Opis
+PORT	3001	Port serwera
+JWT_SECRET	smart-dartboard-secret-key-2024	Klucz podpisu JWT
+SERIAL_PORT_PATH	/dev/ttyACM0	Port szeregowy Arduino
+SERIAL_BAUD_RATE	115200	Prędkość transmisji (Baud rate)
+Uruchamianie
 
-Environment variables (optional):
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3001` | Server port |
-| `JWT_SECRET` | `smart-dartboard-secret-key-2024` | JWT signing key |
-| `SERIAL_PORT_PATH` | `/dev/ttyACM0` | Arduino serial port |
-| `SERIAL_BAUD_RATE` | `115200` | Serial baud rate |
-
-## Running
-
-### Production
-
-```bash
+Produkcja
+code
+Bash
 node server.js
-```
+Serwer będzie dostępny pod adresem:
 
-Server will be available at:
-- **Application**: `http://localhost:3001`
-- **API**: `http://localhost:3001/api`
-- **WebSocket**: `ws://localhost:3001`
-
-### With PM2 (recommended)
-
-```bash
+Aplikacja: http://localhost:3001
+API: http://localhost:3001/api
+WebSocket: ws://localhost:3001
+Z użyciem PM2 (zalecane)
+code
+Bash
 pm2 start server.js --name dartboard
-```
+Endpointy API
 
-## API Endpoints
+Uwierzytelnianie (Auth)
+Metoda	Endpoint	Opis
+POST	/api/auth/register	Rejestracja nowego użytkownika
+POST	/api/auth/login	Logowanie użytkownika
+GET	/api/auth/me	Pobranie aktualnego użytkownika
+Profil
+Metoda	Endpoint	Opis
+PUT	/api/profile/avatar	Aktualizacja awatara
+GET	/api/profile/avatars	Pobranie dostępnych awatarów
+PUT	/api/profile/username	Zmiana nazwy użytkownika
+PUT	/api/profile/password	Zmiana hasła
+Lobby
+Metoda	Endpoint	Opis
+GET	/api/lobbies	Lista wszystkich lobby
+POST	/api/lobbies	Utworzenie lobby
+GET	/api/lobbies/:id	Szczegóły lobby
+POST	/api/lobbies/:id/join	Dołączenie do lobby
+POST	/api/lobbies/:id/leave	Opuszczenie lobby
+PUT	/api/lobbies/:id/mode	Ustawienie trybu gry
+POST	/api/lobbies/:id/start	Rozpoczęcie gry
+POST	/api/lobbies/:id/end	Zakończenie gry
+POST	/api/lobbies/:id/abort	Przerwanie gry
+POST	/api/lobbies/:id/undo-throw	Cofnięcie ostatniego rzutu
+Gra
+Metoda	Endpoint	Opis
+GET	/api/game/can-start	Sprawdzenie dostępności tarczy
+GET	/api/game/dartboard/status	Pobranie statusu połączenia z tarczą
+Zdarzenia Socket.IO
 
-### Authentication
+Klient → Serwer
+Zdarzenie	Payload	Opis
+join_lobby	lobbyId: string	Dołączenie do pokoju lobby
+leave_lobby	lobbyId: string	Opuszczenie pokoju lobby
+Serwer → Klient
+Zdarzenie	Payload	Opis
+lobby_update	Lobby	Zmiana stanu lobby
+game_update	GameState	Zmiana stanu gry (wyniki)
+game_started	GameState	Gra rozpoczęta
+game_ended	-	Gra zakończona normalnie
+game_aborted	{ abortedBy: string }	Gra przerwana
+host_changed	{ newHostId, newHostName }	Zmiana hosta
+lobby_deleted	-	Lobby zostało usunięte
+dartboard_status	{ connected: boolean }	Status połączenia tarczy
+Protokół Arduino
+Serwer oczekuje wiadomości JSON z Arduino przez port szeregowy:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/register` | Register new user |
-| POST | `/api/auth/login` | Login user |
-| GET | `/api/auth/me` | Get current user |
-
-### Profile
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| PUT | `/api/profile/avatar` | Update avatar |
-| GET | `/api/profile/avatars` | Get available avatars |
-| PUT | `/api/profile/username` | Change username |
-| PUT | `/api/profile/password` | Change password |
-
-### Lobby
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/lobbies` | List all lobbies |
-| POST | `/api/lobbies` | Create lobby |
-| GET | `/api/lobbies/:id` | Get lobby details |
-| POST | `/api/lobbies/:id/join` | Join lobby |
-| POST | `/api/lobbies/:id/leave` | Leave lobby |
-| PUT | `/api/lobbies/:id/mode` | Set game mode |
-| POST | `/api/lobbies/:id/start` | Start game |
-| POST | `/api/lobbies/:id/end` | End game |
-| POST | `/api/lobbies/:id/abort` | Abort game |
-| POST | `/api/lobbies/:id/undo-throw` | Undo last throw |
-
-### Game
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/game/can-start` | Check dartboard availability |
-| GET | `/api/game/dartboard/status` | Get dartboard connection status |
-
-## Socket.IO Events
-
-### Client → Server
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `join_lobby` | `lobbyId: string` | Join lobby room |
-| `leave_lobby` | `lobbyId: string` | Leave lobby room |
-
-### Server → Client
-
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `lobby_update` | `Lobby` | Lobby state changed |
-| `game_update` | `GameState` | Game state changed |
-| `game_started` | `GameState` | Game started |
-| `game_ended` | - | Game ended normally |
-| `game_aborted` | `{ abortedBy: string }` | Game aborted |
-| `host_changed` | `{ newHostId, newHostName }` | Host changed |
-| `lobby_deleted` | - | Lobby was deleted |
-| `dartboard_status` | `{ connected: boolean }` | Dartboard connection status |
-
-## Arduino Protocol
-
-The server expects JSON messages from Arduino via serial port:
-
-```json
+code
+JSON
 {
   "event": "hit",
   "sector": 20,
   "multiplier": 3,
   "score": 60
 }
-```
+Pola
+Pole	Typ	Opis
+event	string	Typ zdarzenia (zawsze hit)
+sector	number	Sektor tarczy (1-20, 25 dla środka)
+multiplier	number	1 = pojedyncze, 2 = podwójne, 3 = potrójne
+score	number	Obliczony wynik (sektor × mnożnik)
+Baza Danych
+Dane są przechowywane w pliku database.json:
 
-### Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `event` | string | Event type (`hit`) |
-| `sector` | number | Dartboard sector (1-20, 25 for bull) |
-| `multiplier` | number | 1 = single, 2 = double, 3 = triple |
-| `score` | number | Calculated score (sector × multiplier) |
-
-## Database
-
-Data is stored in `database.json`:
-
-```json
+code
+JSON
 {
   "users": [],
   "lobbies": [],
   "activeGame": null
 }
-```
+Baza danych jest tworzona automatycznie przy pierwszym uruchomieniu.
 
-The database is automatically created on first run.
-
-## Project Structure
-
-```
+Struktura Projektu
+code
+Code
 backend-emulator/
-├── server.js        # Main server file
-├── database.json    # Data storage
-├── package.json     # Dependencies
-├── public/          # Frontend build (from dart-app)
-└── README.md        # This file
-```
+├── server.js        # Główny plik serwera
+├── database.json    # Magazyn danych
+├── package.json     # Zależności
+├── public/          # Zbudowany Frontend (z dart-app)
+└── README.md        # Ten plik
+Development
 
-## Development
-
-### Simulate Throw (without Arduino)
-
-```bash
+Symulacja Rzutu (bez Arduino)
+code
+Bash
 curl -X POST http://localhost:3001/api/lobbies/{id}/simulate-throw \
   -H "Authorization: Bearer {token}"
-```
-
-## License
-
+Licencja
 MIT
