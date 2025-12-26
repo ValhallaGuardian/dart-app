@@ -1,7 +1,7 @@
-Framework: React 19 – najnowszy standard rynkowy, gwarantujący wydajność i modułowość.
-Język: TypeScript – silne typowanie danych. Zapobiega błędom typu "undefined" i gwarantuje, że dane wyświetlane graczowi są poprawne.
-Build Tool: Vite – błyskawiczne ładowanie aplikacji.
-Styling: Tailwind CSS (v3.4) – podejście "Mobile First". Aplikacja jest responsywna (RWD) i zoptymalizowana pod ekrany dotykowe (duże przyciski, ciemny motyw oszczędzający baterię/oczy).
-Komunikacja: Socket.io Client – obsługa połączenia w czasie rzeczywistym (Real-time).
-Architektura: PWA (Progressive Web App) – aplikację można zainstalować na telefonie, działa pełnoekranowo (bez paska adresu przeglądarki) i zachowuje się jak natywna aplikacja.
-Routing: React Router – obsługa nawigacji (Logowanie -> Lobby -> Gra -> Profil).
+Framework: React 19 – the latest industry standard, guaranteeing performance and modularity.
+Language: TypeScript – strong data typing. Prevents "undefined" type errors and guarantees that data displayed to the player is correct.
+Build Tool: Vite – lightning-fast application loading.
+Styling: Tailwind CSS (v3.4) – "Mobile First" approach. The application is responsive (RWD) and optimized for touchscreens (large buttons, dark theme that saves battery/eyes).
+Communication: Socket.io Client – real-time connection support.
+Architecture: PWA (Progressive Web App) – the application can be installed on a phone, runs full-screen (without the browser address bar) and behaves like a native application.
+Routing: React Router – navigation handling (Login -> Lobby -> Game -> Profile).
