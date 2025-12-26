@@ -8,12 +8,20 @@ const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
 const path = require("path");
 
+// Serial port dla Arduino
+const { SerialPort } = require("serialport");
+const { ReadlineParser } = require("@serialport/parser-readline");
+
 // ============================================
 // KONFIGURACJA
 // ============================================
 const PORT = 3000;
 const JWT_SECRET = "smart-dartboard-secret-key-2024";
 const DB_PATH = path.join(__dirname, "database.json");
+
+// Konfiguracja Arduino
+const SERIAL_PORT_PATH = "/dev/ttyACM0"; // Port USB Arduino Mega
+const SERIAL_BAUD_RATE = 115200; // WAŻNE: Arduino wymaga 115200!
 
 // ============================================
 // INICJALIZACJA SERWERA
@@ -604,7 +612,7 @@ app.post("/api/lobbies/:id/abort", authMiddleware, (req, res) => {
   res.json({ message: "Gra przerwana" });
 });
 
-// Symuluj następny rzut (DEV - przycisk ręcznej symulacji)
+// Symuluj następny rzut (DEV - przycisk ręcznej symulacji / testowanie bez Arduino)
 app.post("/api/lobbies/:id/simulate-throw", authMiddleware, (req, res) => {
   const lobby = db.lobbies.find((l) => l.id === req.params.id);
 
@@ -616,8 +624,17 @@ app.post("/api/lobbies/:id/simulate-throw", authMiddleware, (req, res) => {
     return res.status(400).json({ error: "Gra nie jest w trakcie" });
   }
 
-  // Wykonaj symulację rzutu
-  processThrow(lobby);
+  // Generuj losowy rzut do testowania (gdy Arduino niedostępne)
+  const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25];
+  const multipliers = [1, 2, 3];
+  const value = values[Math.floor(Math.random() * values.length)];
+  let multiplier = multipliers[Math.floor(Math.random() * multipliers.length)];
+  if (value === 25 && multiplier === 3) multiplier = 2; // Bull nie może być triple
+  
+  const dartThrow = { value, multiplier, total: value * multiplier };
+  
+  // Wykonaj rzut
+  processThrow(lobby, dartThrow);
 
   res.json(lobby.gameState);
 });
@@ -756,21 +773,8 @@ io.on("connection", (socket) => {
 });
 
 // ============================================
-// SYMULATOR RZUTÓW (tylko dla developmentu)
+// TABELA CHECKOUT HINTS
 // ============================================
-
-function simulateThrow() {
-  const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 25];
-  const multipliers = [1, 2, 3];
-
-  const value = values[Math.floor(Math.random() * values.length)];
-  let multiplier = multipliers[Math.floor(Math.random() * multipliers.length)];
-
-  // Bull nie może być triple
-  if (value === 25 && multiplier === 3) multiplier = 2;
-
-  return { value, multiplier, total: value * multiplier };
-}
 
 const checkoutTable = {
   170: ["T20", "T20", "Bull"],
@@ -793,15 +797,12 @@ function getCheckoutHint(score) {
   return checkoutTable[score] || null;
 }
 
-// Przetwórz rzut (wspólna logika dla symulacji i ręcznego wyzwalania)
-function processThrow(lobby) {
+// Przetwórz rzut z Arduino (dartThrow pochodzi z fizycznej tarczy)
+function processThrow(lobby, dartThrow) {
   const gs = lobby.gameState;
   if (!gs || gs.status !== "PLAYING") return;
 
   const activePlayer = gs.players[gs.currentPlayerIndex];
-
-  // Symulacja rzutu
-  const dartThrow = simulateThrow();
 
   console.log(
     `🎯 ${activePlayer.name}: ${dartThrow.multiplier === 3 ? "T" : dartThrow.multiplier === 2 ? "D" : ""}${dartThrow.value} (${dartThrow.total})`
@@ -895,17 +896,96 @@ function addToHistory(gs, player, dartThrow, isBust) {
   }
 }
 
-function simulateGameStep() {
-  if (!db.activeGame) return;
+// ============================================
+// ARDUINO SERIAL PORT - FIZYCZNA TARCZA
+// ============================================
 
-  const lobby = db.lobbies.find((l) => l.id === db.activeGame);
-  if (!lobby || !lobby.gameState || lobby.gameState.status !== "PLAYING") return;
+let serialPort = null;
+let serialParser = null;
 
-  processThrow(lobby);
+function initializeSerialPort() {
+  try {
+    serialPort = new SerialPort({
+      path: SERIAL_PORT_PATH,
+      baudRate: SERIAL_BAUD_RATE,
+      autoOpen: true,
+    });
+
+    // Parser do odczytu linii (JSON kończy się newline)
+    serialParser = serialPort.pipe(new ReadlineParser({ delimiter: "\n" }));
+
+    serialPort.on("open", () => {
+      console.log(`🔗 Arduino połączone na ${SERIAL_PORT_PATH} @ ${SERIAL_BAUD_RATE} baud`);
+    });
+
+    serialPort.on("error", (err) => {
+      console.error(`⚠️ Błąd portu szeregowego: ${err.message}`);
+      console.log("📡 Serwer działa dalej bez fizycznej tarczy.");
+    });
+
+    serialPort.on("close", () => {
+      console.log("🔌 Arduino rozłączone. Próba ponownego połączenia za 5s...");
+      setTimeout(initializeSerialPort, 5000);
+    });
+
+    // Nasłuchuj danych z Arduino
+    serialParser.on("data", (line) => {
+      handleArduinoData(line);
+    });
+
+  } catch (err) {
+    console.error(`⚠️ Nie można otworzyć portu ${SERIAL_PORT_PATH}: ${err.message}`);
+    console.log("📡 Serwer działa bez Arduino. Spróbuj ponownie za 10s...");
+    setTimeout(initializeSerialPort, 10000);
+  }
 }
 
-// Automatyczna symulacja WYŁĄCZONA - rzuty tylko przez przycisk lub tarczę
-// setInterval(simulateGameStep, 2000);
+function handleArduinoData(line) {
+  // Parsowanie JSON z Arduino
+  let data;
+  try {
+    data = JSON.parse(line.trim());
+  } catch (err) {
+    console.warn(`⚠️ Nieprawidłowy JSON z Arduino: ${line}`);
+    return;
+  }
+
+  // Sprawdź czy to zdarzenie trafienia
+  if (data.event !== "hit") {
+    console.log(`📨 Arduino event: ${data.event}`, data);
+    return;
+  }
+
+  console.log(`🎯 Arduino HIT: sector=${data.sector}, multiplier=${data.multiplier}, score=${data.score}`);
+
+  // Mapowanie danych Arduino na format gry
+  const dartThrow = {
+    value: data.sector,       // arduino.sector -> dartThrow.value
+    multiplier: data.multiplier, // arduino.multiplier -> dartThrow.multiplier  
+    total: data.score,        // arduino.score -> dartThrow.total
+  };
+
+  // Znajdź aktywną grę
+  if (!db.activeGame) {
+    console.log("⚠️ Trafienie zignorowane - brak aktywnej gry");
+    return;
+  }
+
+  const lobby = db.lobbies.find((l) => l.id === db.activeGame);
+  if (!lobby || !lobby.gameState || lobby.gameState.status !== "PLAYING") {
+    console.log("⚠️ Trafienie zignorowane - gra nie jest w trakcie");
+    return;
+  }
+
+  // Przetwórz rzut w logice gry 501/301
+  processThrow(lobby, dartThrow);
+}
+
+// Inicjalizuj połączenie z Arduino po starcie serwera
+setTimeout(() => {
+  console.log("🔍 Szukam Arduino na porcie szeregowym...");
+  initializeSerialPort();
+}, 1000);
 
 // ============================================
 // START SERWERA

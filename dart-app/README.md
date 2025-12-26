@@ -1,8 +1,3 @@
-Oto kompletny, profesjonalny plik `README.md` sformatowany w Markdown. Został napisany tak, aby każdy członek zespołu (oraz wykładowca/osoba oceniająca) od razu wiedział, jak uruchomić projekt i jak on działa.
-
-Możesz stworzyć plik `README.md` w **głównym folderze projektu** (`valhallaguardian-dart-app/`) i wkleić tam poniższą zawartość.
-
-***
 
 ```markdown
 # 🎯 Smart Dartboard - System
@@ -124,8 +119,3 @@ Aby podłączyć fizyczną tarczę (Arduino/Raspberry Pi):
 3.  Reszta logiki (Lobby, Frontend, Punkty) pozostaje bez zmian!
 
 ---
-
-## 📜 Autorzy
-*   **Frontend & Architecture:** Adam
-*   **Backend & Hardware:** Zespół Backendowy
-```
