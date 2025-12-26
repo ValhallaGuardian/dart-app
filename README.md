@@ -1,131 +1,185 @@
-Oto kompletny, profesjonalny plik `README.md` sformatowany w Markdown. Został napisany tak, aby każdy członek zespołu (oraz wykładowca/osoba oceniająca) od razu wiedział, jak uruchomić projekt i jak on działa.
+# Smart Dartboard Server
 
-Możesz stworzyć plik `README.md` w **głównym folderze projektu** (`valhallaguardian-dart-app/`) i wkleić tam poniższą zawartość.
+Production server for the Smart Dartboard application with Arduino integration.
 
-***
+## Features
 
-```markdown
-# 🎯 Smart Dartboard - System
+- **Real-time game management** via Socket.IO
+- **Arduino dartboard integration** via serial port
+- **JWT authentication** for secure user sessions
+- **Multiple game modes**: 501, 301, Cricket, Killer
+- **Player statistics tracking**
+- **Lobby system** with host management
 
-Kompletny system oprogramowania dla inteligentnej tarczy do rzutek. Projekt składa się z nowoczesnego frontendu (PWA) oraz emulatora backendu, który symuluje logikę gry i komunikację z hardwarem.
+## Tech Stack
 
-## 🏗 Architektura
+- **Runtime**: Node.js
+- **Framework**: Express 5
+- **Real-time**: Socket.IO
+- **Authentication**: JWT + bcryptjs
+- **Hardware**: SerialPort (Arduino)
+- **Database**: JSON file storage
 
-System działa w architekturze **Klient-Serwer** z wykorzystaniem komunikacji w czasie rzeczywistym (Real-time).
+## Requirements
 
-1.  **Frontend (`/dart-app`):** Aplikacja React wyświetlająca interfejs gracza. Działa na telefonach, tabletach i komputerach. Nie posiada logiki biznesowej gry – służy tylko do prezentacji.
-2.  **Backend Emulator (`/backend-emulator`):** Serwer Node.js, który pełni rolę "Mózgu". Przechowuje stan gry, zarządza użytkownikami, liczy punkty i pilnuje zasad (np. Bust, Double Out). Docelowo zastępuje fizyczne Raspberry Pi.
+- Node.js 18+
+- Arduino dartboard (optional - server works without it)
 
----
-
-## 🚀 Technologie (Tech Stack)
-
-### Frontend (Klient)
-*   **Framework:** React 19 (via Vite)
-*   **Język:** TypeScript (Strict Mode)
-*   **Style:** Tailwind CSS v3.4 (Mobile First Design)
-*   **Routing:** React Router v7
-*   **Komunikacja:** Socket.io-client (WebSockets) + Fetch API (REST)
-*   **Typ aplikacji:** PWA (Progressive Web App)
-
-### Backend (Serwer/Emulator)
-*   **Runtime:** Node.js
-*   **API:** Express.js
-*   **Real-time:** Socket.io
-*   **Baza danych:** JSON File Database (Persistence)
-*   **Auth:** JWT (JSON Web Token) + Bcrypt (hashowanie haseł)
-
----
-
-## ⚙️ Instrukcja Uruchomienia
-
-Projekt wymaga uruchomienia dwóch niezależnych procesów w osobnych terminalach.
-
-### Krok 1: Uruchomienie Backendu (Serwera)
-To musi działać w tle, aby frontend miał się z czym połączyć.
+## Installation
 
 ```bash
-cd backend-emulator
 npm install
-npm start
 ```
-*Serwer wystartuje na porcie `3000`.*
 
-### Krok 2: Uruchomienie Frontendu (Aplikacji)
-Otwórz **drugi terminal** i wpisz:
+## Configuration
+
+Environment variables (optional):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3001` | Server port |
+| `JWT_SECRET` | `smart-dartboard-secret-key-2024` | JWT signing key |
+| `SERIAL_PORT_PATH` | `/dev/ttyACM0` | Arduino serial port |
+| `SERIAL_BAUD_RATE` | `115200` | Serial baud rate |
+
+## Running
+
+### Production
 
 ```bash
-cd dart-app
-npm install
-npm run dev
+node server.js
 ```
-*Aplikacja wystartuje zazwyczaj na porcie `5173`.*
 
----
+Server will be available at:
+- **Application**: `http://localhost:3001`
+- **API**: `http://localhost:3001/api`
+- **WebSocket**: `ws://localhost:3001`
 
-## 📱 Testowanie na Telefonie (W tej samej sieci Wi-Fi)
+### With PM2 (recommended)
 
-Aby otworzyć aplikację na telefonie, musisz skonfigurować adres IP.
-
-1.  Sprawdź IP swojego komputera w sieci lokalnej (np. `192.168.1.X`).
-2.  W folderze `dart-app` utwórz plik `.env.local` i dodaj:
-    ```env
-    VITE_API_URL=http://TWOJE_IP:3000
-    ```
-3.  Uruchom frontend z flagą `--host`:
-    ```bash
-    npm run dev -- --host
-    ```
-4.  Na telefonie wpisz w przeglądarce: `http://TWOJE_IP:5173`.
-
----
-
-## 🧩 Struktura Projektu
-
-### `/dart-app` (Frontend)
-*   **`src/components`** - Widoki aplikacji (Login, Lobby, GameScreen).
-*   **`src/services`** - Warstwa komunikacji:
-    *   `api.ts` - REST API (Logowanie, Tworzenie gry).
-    *   `socket.ts` - WebSocket (Obsługa zdarzeń na żywo).
-*   **`src/context`** - `AuthContext` zarządzający sesją użytkownika.
-*   **`src/types`** - Współdzielone definicje typów TypeScript (`GameState`, `Player`, `Lobby`).
-
-### `/backend-emulator` (Backend)
-*   **`server.js`** - Główna logika:
-    *   Silnik gry (liczenie punktów, zmiana tur).
-    *   Obsługa WebSocketów (pokoje, eventy).
-    *   Symulator rzutów (`simulateThrow`).
-*   **`database.json`** - Plikowa baza danych (Użytkownicy, Historie gier).
-
----
-
-## 🎮 Funkcjonalności (MVP)
-
-1.  **System Kont:** Rejestracja, Logowanie, Awatary, Statystyki (zapisywane w `database.json`).
-2.  **Lobby:** Tworzenie pokoi, dołączanie do gier, lista aktywnych stołów.
-3.  **Logika Gry (501/301):**
-    *   Pełna obsługa zasad (odliczanie w dół).
-    *   **Double Out:** Wymóg zakończenia podwójnym polem.
-    *   **Bust (Fura):** Cofanie punktów po przekroczeniu zera.
-    *   **Checkout Hints:** Podpowiedzi jak zakończyć grę (np. "Rzuć T20, D20").
-4.  **Emulator Sprzętu:**
-    *   Możliwość testowania bez fizycznej tarczy (przycisk "Symuluj rzut" lub automatyczna symulacja w backendzie).
-5.  **Obsługa Błędów:** Reconnection, walidacja stanów, obsługa przerwania gry.
-
----
-
-## 🔌 Integracja z Hardware (Dla zespołu Backendowego)
-
-Obecnie plik `server.js` używa funkcji `simulateThrow()` do generowania losowych trafień.
-Aby podłączyć fizyczną tarczę (Arduino/Raspberry Pi):
-
-1.  Zainstaluj bibliotekę `serialport` w `backend-emulator`.
-2.  W pliku `server.js` podmień wywołanie `simulateThrow` na nasłuchiwanie portu USB.
-3.  Reszta logiki (Lobby, Frontend, Punkty) pozostaje bez zmian!
-
----
-
-## 📜 Autorzy
-*   **Frontend & Architecture:** Adam
-*   **Backend & Hardware:** Zespół Backendowy
+```bash
+pm2 start server.js --name dartboard
 ```
+
+## API Endpoints
+
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/register` | Register new user |
+| POST | `/api/auth/login` | Login user |
+| GET | `/api/auth/me` | Get current user |
+
+### Profile
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| PUT | `/api/profile/avatar` | Update avatar |
+| GET | `/api/profile/avatars` | Get available avatars |
+| PUT | `/api/profile/username` | Change username |
+| PUT | `/api/profile/password` | Change password |
+
+### Lobby
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/lobbies` | List all lobbies |
+| POST | `/api/lobbies` | Create lobby |
+| GET | `/api/lobbies/:id` | Get lobby details |
+| POST | `/api/lobbies/:id/join` | Join lobby |
+| POST | `/api/lobbies/:id/leave` | Leave lobby |
+| PUT | `/api/lobbies/:id/mode` | Set game mode |
+| POST | `/api/lobbies/:id/start` | Start game |
+| POST | `/api/lobbies/:id/end` | End game |
+| POST | `/api/lobbies/:id/abort` | Abort game |
+| POST | `/api/lobbies/:id/undo-throw` | Undo last throw |
+
+### Game
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/game/can-start` | Check dartboard availability |
+| GET | `/api/game/dartboard/status` | Get dartboard connection status |
+
+## Socket.IO Events
+
+### Client → Server
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `join_lobby` | `lobbyId: string` | Join lobby room |
+| `leave_lobby` | `lobbyId: string` | Leave lobby room |
+
+### Server → Client
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `lobby_update` | `Lobby` | Lobby state changed |
+| `game_update` | `GameState` | Game state changed |
+| `game_started` | `GameState` | Game started |
+| `game_ended` | - | Game ended normally |
+| `game_aborted` | `{ abortedBy: string }` | Game aborted |
+| `host_changed` | `{ newHostId, newHostName }` | Host changed |
+| `lobby_deleted` | - | Lobby was deleted |
+| `dartboard_status` | `{ connected: boolean }` | Dartboard connection status |
+
+## Arduino Protocol
+
+The server expects JSON messages from Arduino via serial port:
+
+```json
+{
+  "event": "hit",
+  "sector": 20,
+  "multiplier": 3,
+  "score": 60
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event` | string | Event type (`hit`) |
+| `sector` | number | Dartboard sector (1-20, 25 for bull) |
+| `multiplier` | number | 1 = single, 2 = double, 3 = triple |
+| `score` | number | Calculated score (sector × multiplier) |
+
+## Database
+
+Data is stored in `database.json`:
+
+```json
+{
+  "users": [],
+  "lobbies": [],
+  "activeGame": null
+}
+```
+
+The database is automatically created on first run.
+
+## Project Structure
+
+```
+backend-emulator/
+├── server.js        # Main server file
+├── database.json    # Data storage
+├── package.json     # Dependencies
+├── public/          # Frontend build (from dart-app)
+└── README.md        # This file
+```
+
+## Development
+
+### Simulate Throw (without Arduino)
+
+```bash
+curl -X POST http://localhost:3001/api/lobbies/{id}/simulate-throw \
+  -H "Authorization: Bearer {token}"
+```
+
+## License
+
+MIT
