@@ -26,6 +26,14 @@ const SERIAL_BAUD_RATE = 115200;
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Endpoint do konfiguracji frontendu
+app.get("/api/config", (req, res) => {
+  res.json({
+    serverUrl: `//${req.get('host')}`,
+  });
+});
+
 app.use(express.static(FRONTEND_DIST));
 
 const httpServer = createServer(app);
@@ -1056,6 +1064,21 @@ app.get("/{*splat}", (req, res) => {
 // SERVER START
 // ===========================================
 const HOST = "0.0.0.0";
+const os = require("os");
+
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "localhost";
+}
+
+const localIP = getLocalIP();
 
 httpServer.listen(PORT, HOST, () => {
   console.log(`Smart Dartboard Server (Production)`);
@@ -1065,6 +1088,6 @@ httpServer.listen(PORT, HOST, () => {
   console.log(`WebSocket: ws://localhost:${PORT}`);
   console.log(``);
   console.log(`Local network access:`);
-  console.log(`   http://<YOUR_IP>:${PORT}`);
+  console.log(`   http://${localIP}:${PORT}`);
   console.log(`====================================`);
 });

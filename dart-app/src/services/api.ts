@@ -1,6 +1,7 @@
 import type { AuthResponse, User, Lobby, LobbyListItem, GameState, CanStartResponse, GameMode, AvatarPreset } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+const isDev = import.meta.env.DEV;
+const API_URL = isDev ? (import.meta.env.VITE_API_URL || 'http://localhost:3000') : '';
 const API_BASE = `${API_URL}/api`;
 
 function getToken(): string | null {
